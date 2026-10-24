@@ -88,7 +88,10 @@ def main():
     parser.add_argument("--rebuild", action="store_true")
     parser.add_argument("--hybrid", action="store_true")
     parser.add_argument("--reuse", action="store_true", help="read saved held-out probabilities")
+    parser.add_argument("--exclude", nargs="*", default=[],
+                        help="input-column prefixes to leave out (learned.EXCLUDE)")
     args = parser.parse_args()
+    learned.EXCLUDE.update(args.exclude)
 
     print("building features ...", flush=True)
     data = {}

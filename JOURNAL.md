@@ -927,6 +927,30 @@ as a whole, plus the log-probability of its length (priors from the other six DF
 **Realistic benchmark now:** DFL with an animated dead ball, blur and our gaps. Hand v20 0.535,
 v21-style hybrid 0.542, learned blend 0.639 (doesn't transfer).
 
+### 2026-10-25 (later): why learned stoppage detection fails on our match (time-boxed probe)
+
+Question: the learned blend scores 0.639 on DFL (animated dead ball) against 0.535 for the hand
+model, but calls our live play dead (D 58%). Which inputs differ? Our live frames are v21's live
+calls (its D comes from the hand model), with the ball seen, compared with DFL's true live frames.
+
+- **Shift ranking:** the largest gaps are time since / until the last thresholded touch (+0.65 /
+  +0.51 SD; on the frames called dead +1.40). On our match the touch network is less sure, so
+  fewer touches pass 0.7 and live play looks touchless.
+- **Without the touch timers** (`--exclude t_since t_until next_side`): D still 53%. With switch
+  30 > 15 + 4, every turnover went through a fake stoppage (0% direct); with sane costs (10/15/4,
+  6/15/4, 10/25/6) D is still 53%.
+- **LightGBM contributions** (pred_contrib) on our wrongly-dead live frames vs DFL live: the
+  biggest push to dead is the touch-probability sum over ±2 s (ours 0.01–0.03, DFL 0.19), then
+  player pace (1.5 vs 2.5 m/s) and ball speed (4.4 vs 6.7 m/s). 15% of our live frames get
+  P(D) > 0.5; DFL's: 0%.
+- **Without touch amounts too** (`--exclude ... tpsum`): D 52%, 16% of public ball-seen live
+  frames still called dead. The model moves on to pace and ball speed.
+- **Conclusion:** our live play is slower than DFL's (Barcelona's calm build-up runs at a pace DFL
+  mostly shows in stoppages). Dropping inputs can't remove that without removing pace, which the
+  hand model's stoppage rules need too. Learned stoppage detection is dropped. The hybrid
+  (hand D, learned team) stays: **v21**.
+- `--exclude` added to `train_learned_dfl.py` and `run_learned.py`.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags

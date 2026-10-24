@@ -110,7 +110,10 @@ def main():
     parser.add_argument("--hybrid", type=float, metavar="SWITCH",
                         help="hand v20 decides D vs live, the learned model the team, with this "
                              "switch cost (learned.decode_hybrid)")
+    parser.add_argument("--exclude", nargs="*", default=[],
+                        help="input-column prefixes to leave out (learned.EXCLUDE)")
     args = parser.parse_args()
+    learned.EXCLUDE.update(args.exclude)
 
     kinds = ("gbm", "gru") if args.model == "blend" else (args.model,)
     if args.model_dir:
