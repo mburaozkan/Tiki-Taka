@@ -107,7 +107,8 @@ column gives the command for the current code.
 | v12 | co-movement: the carrier moves with the ball (H/A split only), weight 4 | 303 | 41% | 40% | 0.62 / 0.89 | `--set gap_gate=1 w_comove=4` |
 | v15 | chosen on Metrica: v6 + keeper hold + co-movement 1, no gap gate. Metrica 0.713 | 288 | 39% | 45% | 0.59 / 0.85 | `--set gap_gate=0 w_gap=0.8` |
 | v19 | chosen on DFL with our gaps: v15 + gap gate + w_gap 0.4. DFL 0.567 (v15 0.514) | 294 | 42% | 37% | 0.61 / 0.84 | `python pipeline/run.py --name v19` |
-| **v20** | **v19 + touch network (trained on DFL, threshold 0.7). DFL blur+gaps 0.567 (v19 0.511)** | **277** | **42%** | **37%** | **0.64 / 0.87** | `python pipeline/run.py --name v20 --touch-net` |
+| v20 | v19 + touch network (trained on DFL, threshold 0.7). DFL blur+gaps 0.567 (v19 0.511) | 277 | 42% | 37% | 0.64 / 0.87 | `python pipeline/run.py --name v20 --touch-net` |
+| **v21** | **v20 decides D; learned GBM+GRU (trained on DFL) decides the team. DFL 0.579 (5/7)** | **261** | **40%** | **37%** | **0.66 / 0.88** | `python pipeline/run_learned.py --name v21 --source dfl --model blend --hybrid 10` |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -852,6 +853,42 @@ DFL with blur + gaps, each match decoded by the network trained without it):
 - Still open: the shortest possessions (16% of those under 4 s on DFL; public #10 and #12 still
   missed).
 
+### 2026-10-24 (late night): learned evidence on DFL, and DFL's frozen dead ball
+
+**Learned evidence trained on DFL** (`tools/train_learned_dfl.py`): GBM, GRU and a 50/50 blend on
+the existing inputs plus the touch network's probabilities (each match's from the network trained
+without it). DFL with blur + gaps, controlled labels, 7 rounds holding one match out, decoder costs
+picked on the same rounds:
+
+| model | DFL spellF1 / macroF1 | vs hand v20 |
+|---|---|---|
+| hand v20 | 0.567 / 0.835 | |
+| GBM | 0.639 / 0.897 | 7/7 |
+| GRU | 0.637 / 0.903 | 6/7 |
+| blend | 0.651 / 0.905 | 7/7 |
+
+**But it doesn't transfer whole:** trained on all 7 and run on our match (v21_blend), 299
+possessions and D 39% (plausible, unlike v16), but public 0.575 / 0.710. Team errors fall (wrong
+team 7.2% vs 9.0%), yet 13.6% of ball-seen public frames are stoppages called live (v20: 2.4%).
+
+**Cause: DFL's ball is frozen while dead.** With the ball seen in true stoppages: DFL ball speed
+0.0, still 98%, touch P > 0.5 on 0.5% of frames. Ours: 2.5 m/s, still 48%, touch P 18% (players
+carry and pass the ball to the restart). The learned model took a perfectly still ball to mean
+"dead". This also flatters every model's dead-ball detection on DFL, the hand model's included.
+
+**Hybrid** (`learned.decode_hybrid`): the hand path decides D vs live; inside each live stretch a
+two-state Viterbi over the learned P(H) vs P(A) decides the team.
+- DFL: blend hybrid 0.579 / 0.843 at switch 10 (GBM 0.574, GRU 0.568). That is **+0.012 over v20,
+  5/7 matches** (worse in the two Bundesliga 1 matches). Most of the learned 0.651 came from the
+  frozen-ball stoppages.
+- Our match: **v21 = v20 + blend hybrid, switch 10.** 261 possessions, D 37.3% (unchanged), home
+  share 57.9% (v20 61.8%), public 0.658 / 0.877, wrong team 7.5%.
+- Weights in `models/` (`gbm_dfl.txt` 8.5 MB, `gru_dfl.pt`); a rebuild gave an identical file.
+
+**Next:** give DFL's dead ball realistic motion (carried and passed to the restart spot), so the
+learned model can also learn stoppages that look like ours. That is the way to the rest of the
+0.65.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
@@ -861,9 +898,11 @@ DFL with blur + gaps, each match decoded by the network trained without it):
   (absent in stoppages, sitting on the carrier), so models trained on it misread our dead balls.
   Learned models beat the hand model on Metrica (0.822 vs 0.793), but transfer badly to our match
   (v16: public 0.49 / 0.67).
-- **The submission is v20** (`python pipeline/run.py --name v20 --touch-net`): v19 plus the touch
-  network. On our match: 277 possessions, D 37.3%, public 0.64 / 0.87. Realistic test (DFL, blur
-  + gaps): 0.567 / 0.835.
+- **The submission is v21** (`python pipeline/run_learned.py --name v21 --source dfl --model blend
+  --hybrid 10`): v20 decides D vs live, the learned blend decides the team. On our match: 261
+  possessions, D 37.3%, public 0.66 / 0.88. Realistic test (DFL, blur + gaps): 0.579 / 0.843.
+- **DFL's ball is frozen while dead**, so DFL flatters dead-ball detection. Learned D calls don't
+  transfer until that is fixed.
 - **Next:** the shortest possessions; learned evidence (GBM / GRU) retrained on DFL with the
   touch network as input.
 - The public window misranked our versions. It is now only a correctness check, as the ground

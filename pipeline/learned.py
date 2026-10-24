@@ -17,7 +17,8 @@ from pipeline.decode import H, A, D, X, viterbi, emissions, transition_cost, PAR
 
 # Params
 WINDOWS = (12, 25, 50)           # frames: ~0.5, 1, 2 s, each as a past and a future mean
-SWAP = (("d_home", "d_away"), ("c_home", "c_away"), ("m_home", "m_away"), ("g_home", "g_away"))
+SWAP = (("d_home", "d_away"), ("c_home", "c_away"), ("m_home", "m_away"), ("g_home", "g_away"),
+        ("touch_p_home", "touch_p_away"))
 NEGATE = ("touch", "last_touch", "shape", "keeper_hold")
 EXCLUDE = set()                  # column-name prefixes left out (domain-shift experiments)
 FAR = 30.0                       # a missing distance reads as this far (m)
@@ -28,7 +29,8 @@ def flip(f):
     """The same match with home and away swapped."""
     g = dict(f)
     for a, b in SWAP:
-        g[a], g[b] = f[b], f[a]
+        if a in f and b in f:
+            g[a], g[b] = f[b], f[a]
     for k in NEGATE:
         g[k] = -f[k]
     return g
@@ -87,13 +89,17 @@ def matrix(f, blocks=None):
         "shape": np.nan_to_num(f["shape"]), "keeper": f["keeper_hold"],
         "gh": np.nan_to_num(f["g_home"], nan=-1.0), "ga": np.nan_to_num(f["g_away"], nan=-1.0),
     }
+    # Touch network probabilities (pipeline/touch_net.py); zeros when it was not run.
+    tph = f.get("touch_p_home", np.zeros(len(dh), np.float32)).astype(np.float64)
+    tpa = f.get("touch_p_away", np.zeros(len(dh), np.float32)).astype(np.float64)
+    base.update({"tph": tph, "tpa": tpa, "tpdiff": tph - tpa})
     since, until, nside = touch_timing(f["touch"])
     base.update({"t_since": since, "t_until": until, "next_side": nside})
     # Context: past and future means of the signals that move at a change of possession.
     ctx = {"ddiff": np.where(np.isnan(f["d_home"]) | np.isnan(f["d_away"]), np.nan, da - dh),
            "mdiff": f["m_home"] - f["m_away"], "seen": f["ball_seen"],
            "bspeed": f["ball_speed"], "pspeed": f["player_speed"], "touch": f["touch"],
-           "out": f["ball_out"], "shape": f["shape"]}
+           "out": f["ball_out"], "shape": f["shape"], "tpdiff": tph - tpa, "tpsum": tph + tpa}
     cols = dict(base)
     if blocks is not None:
         cols.update(hand_columns(f, blocks))
@@ -148,3 +154,29 @@ def decode_probs(prob, blocks, costs=DECODER, floor=1e-4):
     for a, b in blocks:
         codes[a:b] = viterbi(scores[a:b], c)
     return codes
+
+
+def decode_hybrid(hand_codes, prob, blocks, switch, floor=1e-4):
+    """Hand model decides D vs live, the learned model decides the team.
+
+    Keeps the hand path's D frames (and X outside the blocks). Inside every maximal live stretch
+    of the hand path, a two-state Viterbi over log P(H) and log P(A), renormalised to H + A = 1,
+    with `switch` (log-prob units) per change of team. The learned model's own D call is not
+    used: DFL's ball is frozen while dead, so it learned that a still ball means a stoppage, which
+    does not hold on our match (JOURNAL.md, 2026-10-24).
+    """
+    out = hand_codes.copy()
+    live = (hand_codes == H) | (hand_codes == A)
+    pa = np.clip(prob[:, H], floor, 1.0)
+    pb = np.clip(prob[:, A], floor, 1.0)
+    total = pa + pb
+    scores = np.stack([np.log(pa / total), np.log(pb / total), np.full(len(prob), -1e9)], axis=1)
+    c = np.zeros((3, 3))
+    c[H, A] = c[A, H] = switch
+    c[H, D] = c[A, D] = c[D, H] = c[D, A] = 1e9
+    for a, b in blocks:
+        edges = np.diff(np.concatenate(([0], live[a:b].astype(np.int8), [0])))
+        for s0, e0 in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+            out[a + s0:a + e0] = viterbi(scores[a + s0:a + e0], c)
+    return out
+
