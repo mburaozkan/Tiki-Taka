@@ -2,7 +2,7 @@
 
     python pipeline/run.py                                  # -> evaluation/results/v1.csv
     python pipeline/run.py --name v1_sw40 --set switch=40   # override any PARAMS entry
-    python pipeline/run.py --name v17 --ball-fill extrapolate  # guess the ball inside gaps
+    python pipeline/run.py --name v20 --touch-net      # the current submission
     python tools/report.py evaluation/results/v1.csv        # then look at it
 
 The same command with the same parameters always writes the same file.
@@ -58,6 +58,9 @@ def main():
                         help="extra Smart Tagging team readings, e.g. 'players in the box=1'")
     parser.add_argument("--ball-fill", choices=("hold", "extrapolate", "interp"),
                         help="guess the ball inside gaps (pipeline/ball_fill.py)")
+    parser.add_argument("--touch-net", action="store_true",
+                        help="touches from the touch network trained on DFL "
+                             "(models/touch_net_all.pt, from tools/train_touch.py --final)")
     args = parser.parse_args()
 
     import pipeline.features as features
@@ -70,7 +73,11 @@ def main():
             sys.exit("unknown TOUCH_/KEEPER_ constant {!r}".format(key))
         setattr(features, key, float(value) if "." in value or key != "TOUCH_K" else int(value))
     params = parse_overrides(args.set)
-    codes = decode(build_features(ball_fill=args.ball_fill), params)
+    model = None
+    if args.touch_net:
+        from pipeline import touch_net
+        model = touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH))
+    codes = decode(build_features(ball_fill=args.ball_fill, touch_model=model), params)
     path = write_submission(os.path.join(RESULTS_DIR, args.name + ".csv"), codes)
 
     reason = pm.validate_submission(pm.read_label_csv(path), GAMES[GAME]["n_video_frames"])

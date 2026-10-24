@@ -335,7 +335,12 @@ def touches(ball, d_home, d_away, gap):
     hit = peak & near
     touch[hit] = np.where(dh[hit] < da[hit], 1.0, -1.0)
 
-    # Carry the last touch forward; a long gap starts a reset (0) until the next touch.
+    return touch, carry_last_touch(touch, dh, da, gap)
+
+
+def carry_last_touch(touch, dh, da, gap):
+    """The side of the most recent touch carried forward; a long gap resets it to 0."""
+    n = len(touch)
     event = touch.copy()
     event[np.abs(dh - da) < TOUCH_MIN_MARGIN_M] = 0.0
     reset = (gap >= TOUCH_RESET_GAP_S) & np.concatenate(([True], gap[:-1] < TOUCH_RESET_GAP_S))
@@ -343,7 +348,7 @@ def touches(ball, d_home, d_away, gap):
     idx = np.where(has, np.arange(n), -1)
     np.maximum.accumulate(idx, out=idx)
     last = np.where(idx >= 0, event[np.maximum(idx, 0)], 0.0)
-    return touch, last.astype(np.float32)
+    return last.astype(np.float32)
 
 
 def mean_player_speed(players):
@@ -396,11 +401,13 @@ def tagging_features(n_frames, events=None):
     return setpiece, np.sign(vote).astype(np.float32), restart, restart_team
 
 
-def build_features(atd=None, events=None, ball_fill=None):
+def build_features(atd=None, events=None, ball_fill=None, touch_model=None):
     """All features as a dict of float32 arrays over every video frame.
 
     ball_fill: None, or a pipeline.ball_fill method; the guessed ball inside gaps then feeds
     d_home/d_away only. Everything else, including ball_seen and gap_s, reads the real track.
+    touch_model: None, or a loaded pipeline.touch_net model; its touches then replace the
+    velocity-peak rule in touch and last_touch (touch_prob holds its P(home / away touch)).
     """
     atd = atd if atd is not None else load_arrays("tactical")
     players, ball, team = atd["players"], atd["ball"], atd["team"]
@@ -414,6 +421,17 @@ def build_features(atd=None, events=None, ball_fill=None):
         d_home, d_away = nearest_by_team(players, team, ball)
     c_home, c_away = carrier_by_team(players, team, ball)
     touch, last_touch = touches(ball, d_home, d_away, gap)
+    touch_prob = np.zeros((n, 2), dtype=np.float32)
+    if touch_model is not None:
+        from pipeline import touch_net
+        prob = touch_net.predict(touch_model, touch_net.inputs(players, ball, team, (LENGTH, WIDTH)))
+        touch_prob = prob[:, 1:].astype(np.float32)
+        frames, sides = touch_net.pick(prob, touch_net.PICK_THRESHOLD)
+        touch = np.zeros(n, dtype=np.float32)
+        touch[frames] = np.where(sides == 0, 1.0, -1.0)
+        dh = np.where(np.isnan(d_home), np.inf, d_home)
+        da = np.where(np.isnan(d_away), np.inf, d_away)
+        last_touch = carry_last_touch(touch, dh, da, gap)
     hold = keeper_hold(ball, players, team, seen, out)
     m_home, m_away = comove_by_team(players, team, ball)
     shape = team_shape(players, team)
@@ -424,6 +442,7 @@ def build_features(atd=None, events=None, ball_fill=None):
     feats = {
         "ball_seen": seen, "d_home": d_home, "d_away": d_away,
         "c_home": c_home, "c_away": c_away, "touch": touch, "last_touch": last_touch,
+        "touch_p_home": touch_prob[:, 0], "touch_p_away": touch_prob[:, 1],
         "keeper_hold": hold, "m_home": m_home, "m_away": m_away,
         "shape": shape, "g_home": g_home, "g_away": g_away,
         "ball_out": out,

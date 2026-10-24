@@ -106,7 +106,8 @@ column gives the command for the current code.
 | v11 | cheap switching at clean touches | 235–443 | – | – | 0.51–0.61 | trial, off (`touch_switch`) |
 | v12 | co-movement: the carrier moves with the ball (H/A split only), weight 4 | 303 | 41% | 40% | 0.62 / 0.89 | `--set gap_gate=1 w_comove=4` |
 | v15 | chosen on Metrica: v6 + keeper hold + co-movement 1, no gap gate. Metrica 0.713 | 288 | 39% | 45% | 0.59 / 0.85 | `--set gap_gate=0 w_gap=0.8` |
-| **v19** | **chosen on DFL with our gaps: v15 + gap gate + w_gap 0.4. DFL 0.567 (v15 0.514)** | **294** | **42%** | **37%** | **0.61 / 0.84** | `python pipeline/run.py --name v19` (default) |
+| v19 | chosen on DFL with our gaps: v15 + gap gate + w_gap 0.4. DFL 0.567 (v15 0.514) | 294 | 42% | 37% | 0.61 / 0.84 | `python pipeline/run.py --name v19` |
+| **v20** | **v19 + touch network (trained on DFL, threshold 0.7). DFL blur+gaps 0.567 (v19 0.511)** | **277** | **42%** | **37%** | **0.64 / 0.87** | `python pipeline/run.py --name v20 --touch-net` |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -808,6 +809,49 @@ will see only the blurred, gapped ball.
 **Next:** the student network: blurred and gapped DFL ball plus players in, P(touch by home / by
 away) per frame out. Train on 6 matches, test on the 7th, and compare with our current touch rule.
 
+### 2026-10-24 (night, last): the touch network, v20
+
+**Touch network** (`pipeline/touch_net.py`, `tools/train_touch.py`):
+- A residual temporal conv net, about ±2.5 s of context, output none / home / away touch per
+  frame.
+- Inputs: the ball (seen, position, velocity, velocity change over 0.12 and 0.24 s, gap clocks);
+  the 3 nearest players per team (distance, relative position and velocity, speed); counts
+  within 2 m and 5 m; mean pace.
+- Trained on DFL with the ball blurred and gapped like ours (2 gap patterns per match, teams
+  swapped and pitch mirrored as augmentation), against the teacher touches.
+- **7-fold held-out, ±0.5 s:** our rule P 0.90, R 0.38, F1 0.53, turnover touches 35%; **network
+  at 0.5: P 0.85, R 0.67, F1 0.74, turnover touches 55%**, on time (0.00 s). Better in 7/7.
+- Transfer check: with the ball seen in live play it fires 40.4 per minute on our match against
+  40.6–45.0 on DFL (rule: 25 against 25–28). But its mean P(touch) is higher on ours (0.31 vs
+  0.18–0.20): less sure.
+
+**In the decoder** (`--touch-net`; network touches replace the rule's in touch / last_touch;
+DFL with blur + gaps, each match decoded by the network trained without it):
+
+| touch threshold | DFL sp / mF1 | raw flags | public sp / mF1 | our possessions |
+|---|---|---|---|---|
+| rule (v19) | 0.511 / 0.812 | 0.451 | 0.611 / 0.840 | 294 |
+| 0.5 | 0.553 / 0.829 | | 0.513 / 0.815 | 294 |
+| **0.7 (v20)** | **0.567 / 0.835** | | **0.640 / 0.866** | 277 |
+| 0.8 | 0.574 / 0.836 | 0.512 (7/7) | 0.582 / 0.858 | 270 |
+| 0.85 | 0.577 / 0.837 | | 0.593 / 0.848 | 261 |
+| 0.9 / 0.95 | 0.575 / 0.575 | | 0.428 / 0.252 | 237 / 208 |
+
+- The decoder wants sure touches: DFL rises with the threshold up to about 0.85.
+- At 0.5 the public window showed the failure mode: spurious turnovers inside long possessions
+  (#1, #4, #6, #11), a missed end of #9. #3 (2.8 s) was fixed, from a start 14.7 s early to
+  0.1 s early.
+- Our match is less confident than DFL: from 0.9 up too few touches survive and possessions
+  collapse. **0.7 chosen:** within 0.01 of the DFL best, better than v19 in 7/7, away from that
+  cliff.
+- Extra knobs on top of the network (touch weight 2–3, cheaper switch at touches, switch 20)
+  don't help on DFL.
+- **v20 = v19 + touch network at 0.7.** Our match: 277 possessions, 42% direct, D 37.3%, public
+  0.640 / 0.866. The weights (trained on DFL only, 0.5 MB) are committed in `models/` so the
+  submission rebuilds exactly; a rebuild gave an identical file.
+- Still open: the shortest possessions (16% of those under 4 s on DFL; public #10 and #12 still
+  missed).
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
@@ -817,9 +861,11 @@ away) per frame out. Train on 6 matches, test on the 7th, and compare with our c
   (absent in stoppages, sitting on the carrier), so models trained on it misread our dead balls.
   Learned models beat the hand model on Metrica (0.822 vs 0.793), but transfer badly to our match
   (v16: public 0.49 / 0.67).
-- **Pipeline v19 is the default** (`python pipeline/run.py --name v19`), chosen on DFL. On our
-  match: 294 possessions, D 37.1%, public 0.61 / 0.84. v15 is `--set gap_gate=0 w_gap=0.8`.
-- **Next:** a touch detector trained on DFL, aimed at short possessions (recall 20% under 4 s).
+- **The submission is v20** (`python pipeline/run.py --name v20 --touch-net`): v19 plus the touch
+  network. On our match: 277 possessions, D 37.3%, public 0.64 / 0.87. Realistic test (DFL, blur
+  + gaps): 0.567 / 0.835.
+- **Next:** the shortest possessions; learned evidence (GBM / GRU) retrained on DFL with the
+  touch network as input.
 - The public window misranked our versions. It is now only a correctness check, as the ground
   rules always said.
 - Hand-built versions all land between 0.68 and 0.71 on Metrica. The next gain has to come from

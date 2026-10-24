@@ -77,8 +77,17 @@ def decode_runs(f, p, runs, n):
     return codes
 
 
-def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=False):
-    """[(features, runs, labels)] and the provider's fps."""
+def touch_model(name):
+    """The saved touch network data/cache/models/touch_net_<name>.pt (tools/train_touch.py)."""
+    from games import DATA_DIR
+    from pipeline import touch_net
+    return touch_net.load(os.path.join(DATA_DIR, "cache", "models", "touch_net_{}.pt".format(name)))
+
+
+def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=False,
+                     touch_net=False):
+    """[(features, runs, labels)] and the provider's fps. With touch_net, each DFL match gets the
+    network trained without it."""
     if provider == "metrica":
         import metrica_data as mod
         key = "labels"
@@ -98,7 +107,8 @@ def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=Fa
             from gap_model import degrade as cut
             ball = cut(ball, d["players"], seed=sum(map(ord, str(g))))
         f = features.build_features({"players": d["players"], "ball": ball,
-                                     "team": d["team"]}, events=[], ball_fill=ball_fill)
+                                     "team": d["team"]}, events=[], ball_fill=ball_fill,
+                                    touch_model=touch_model(g) if touch_net else None)
         runs = []
         for per in (1, 2):
             idx = np.flatnonzero(d["period"] == per)
@@ -118,15 +128,23 @@ def main():
     parser.add_argument("--degrade", action="store_true", help="cut our gap pattern into the ball")
     parser.add_argument("--ball-fill", choices=("hold", "extrapolate", "interp"))
     parser.add_argument("--blur", action="store_true", help="smooth the external ball like ours")
+    parser.add_argument("--touch-net", action="store_true",
+                        help="touches from the touch network (pipeline/touch_net.py)")
+    parser.add_argument("--touch-threshold", type=float,
+                        help="P(touch) needed to call a network touch (touch_net.PICK_THRESHOLD)")
     args = parser.parse_args()
     settings = [parse_setting(s) for s in args.settings]
+    if args.touch_threshold is not None:
+        from pipeline import touch_net
+        touch_net.PICK_THRESHOLD = args.touch_threshold
 
-    ours = features.build_features(ball_fill=args.ball_fill)
+    ours = features.build_features(ball_fill=args.ball_fill,
+                                   touch_model=touch_model("all") if args.touch_net else None)
     ours_runs = [(a, b) for _, a, b in half_runs()]
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
 
     external, fps = ([], 25) if args.provider == "none" else external_matches(
-        args.provider, args.labels, args.degrade, args.ball_fill, args.blur)
+        args.provider, args.labels, args.degrade, args.ball_fill, args.blur, args.touch_net)
     print("{:<16} {:>5} {:>7} {:>6} {:>6}   {:>15}   {}".format(
         "setting", "poss", "median", "direct", "D", "public sp / mF1",
         "{} spellF1 per match | mean, macroF1 mean   recall at IoU {} by true length {}   median "
