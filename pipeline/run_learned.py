@@ -103,6 +103,9 @@ def main():
     parser.add_argument("--model", choices=("gbm", "gru", "blend"), default="blend")
     parser.add_argument("--costs", nargs=3, type=float, metavar=("SWITCH", "TO_DEAD", "FROM_DEAD"))
     parser.add_argument("--retrain", action="store_true")
+    parser.add_argument("--touch-model", help="touch network weights (default: the committed "
+                                              "models/touch_net_all.pt)")
+    parser.add_argument("--model-dir", help="read / write the learned models here instead")
     parser.add_argument("--gbm-weight", type=float, default=GBM_WEIGHT)
     parser.add_argument("--hybrid", type=float, metavar="SWITCH",
                         help="hand v20 decides D vs live, the learned model the team, with this "
@@ -110,8 +113,12 @@ def main():
     args = parser.parse_args()
 
     kinds = ("gbm", "gru") if args.model == "blend" else (args.model,)
+    if args.model_dir:
+        global REPO_DIR, CACHE_DIR
+        REPO_DIR = CACHE_DIR = args.model_dir
     trained = models(args.source, kinds, args.retrain)
-    tm = touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH)) if args.source == "dfl" else None
+    tm_path = args.touch_model or os.path.join(ROOT, touch_net.MODEL_PATH)
+    tm = touch_net.load(tm_path) if args.source == "dfl" else None
     f = build_features(events=[], touch_model=tm)
     probs = {}
     if "gbm" in trained:

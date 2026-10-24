@@ -65,6 +65,14 @@ RESTARTS = ("ThrowIn", "FreeKick", "GoalKick", "CornerKick", "Penalty")
 # Our ball track is time-blurred: DFL's ball smoothed with a Gaussian of this many frames (0.24 s)
 # matches our velocity-change peak profile at every scale (tools/ball_realism.py, JOURNAL.md).
 BLUR_SIGMA = 6
+# Dead-ball motion (animate_dead_ball), calibrated to our ball in stoppages (JOURNAL.md).
+LIE_SHARE = (0.1, 0.5)      # share of a dead stretch the ball lies where play stopped
+FLIGHT_MS = (6.0, 15.0)     # speed of the passes / throws while the restart is set up
+REST_S = (0.3, 1.5)         # time the ball stays with a player between passes
+OFFSET_M = (0.5, 3.0)       # how far from that player it rests
+N_HELPERS = 4               # players nearest the restart spot who pass it around
+BLEND_S = 0.5               # glide into the restart position over the last half second
+MIN_DEAD_S = 2.0
 
 _FRAMESET = re.compile(r'<FrameSet GameSection="(\w+)"[^>]*TeamId="([^"]+)"[^>]*PersonId="([^"]+)"')
 _FRAME = re.compile(r'<Frame N="(\d+)"[^>]*? X="([-\d.]+)" Y="([-\d.]+)"(?: Z="([-\d.]+)")?'
@@ -242,6 +250,96 @@ def blur_ball(ball, sigma=BLUR_SIGMA):
         smooth[~ok] = np.nan
         out[:, c] = smooth
     return out
+
+
+def animate_dead_ball(d, seed=0, lie=LIE_SHARE, flight_ms=FLIGHT_MS, rest_s=REST_S,
+                      offset_m=OFFSET_M):
+    """Copy of the ball with every dead stretch given motion like ours.
+
+    DFL holds the ball still while it is dead (speed 0.0, still 98% of dead frames); ours is
+    picked up, passed around and carried to the restart (speed 2.4 m/s, still 50%, faster than
+    8 m/s 13-19%, within 1.5 m of a player about 30%, nearest player about 3 m). For each dead
+    stretch [s, e):
+      lying     the ball stays where play stopped, for a share drawn from `lie` of the stretch
+      passed    then it moves between the N_HELPERS players nearest the restart spot: a flight at
+                a speed drawn from `flight_ms` to a player, a rest of `rest_s` seconds next to him
+                (offset drawn from `offset_m`), the next player, ...
+      restart   the last rest is with the taker (the restarting team's player nearest the
+                restart spot), blending into the restart position over the last BLEND_S
+    Stretches shorter than MIN_DEAD_S are interpolated straight from stop to restart.
+    """
+    rng = np.random.default_rng(seed)
+    L, W = PITCH
+    lab, players, team = d["labels"], d["players"], d["team"]
+    x = d["ball"][:, 0].astype(np.float64) * L
+    y = d["ball"][:, 1].astype(np.float64) * W
+    px, py = players[:, :, 0].astype(np.float64) * L, players[:, :, 1].astype(np.float64) * W
+    dead = lab == D
+    edges = np.diff(np.concatenate(([0], dead.astype(np.int8), [0])))
+    blend = int(BLEND_S * FPS)
+    for s, e in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+        if s == 0 or e >= len(lab) or lab[e] not in (H, A):
+            continue
+        x0, y0, x1, y1 = x[s], y[s], x[e], y[e]
+        n = e - s
+        if n < MIN_DEAD_S * FPS or np.isnan(x0 + y0 + x1 + y1):
+            frac = np.arange(1, n + 1) / float(n + 1)
+            x[s:e], y[s:e] = x0 + frac * (x1 - x0), y0 + frac * (y1 - y0)
+            continue
+        side = 0 if lab[e] == H else 1
+        cols = np.flatnonzero(team == side)
+        dist_end = np.hypot(px[e, cols] - x1, py[e, cols] - y1)
+        if np.all(np.isnan(dist_end)):
+            continue
+        taker = cols[int(np.nanargmin(dist_end))]
+        near_spot = np.hypot(px[e] - x1, py[e] - y1)
+        helpers = [int(i) for i in np.argsort(np.where(np.isnan(near_spot), np.inf, near_spot))
+                   [:N_HELPERS] if np.isfinite(near_spot[i])]
+
+        def track(j):
+            tx, ty = px[s:e, j].copy(), py[s:e, j].copy()
+            ok = ~np.isnan(tx)
+            idx = np.arange(n)
+            if not ok.any():
+                return np.full(n, x1), np.full(n, y1)
+            return np.interp(idx, idx[ok], tx[ok]), np.interp(idx, idx[ok], ty[ok])
+
+        bx, by = np.full(n, x0), np.full(n, y0)
+        t = int(rng.uniform(*lie) * n)
+        cur_x, cur_y = x0, y0
+        while t < n:
+            last = t + int(rest_s[1] * FPS) >= n - blend
+            j = taker if last else int(rng.choice(helpers))
+            tx, ty = track(j)
+            ang = rng.uniform(0, 2 * np.pi)
+            off = rng.uniform(*offset_m)
+            gx, gy = tx + off * np.cos(ang), ty + off * np.sin(ang)
+            fly = max(1, int(np.hypot(gx[t] - cur_x, gy[t] - cur_y) / rng.uniform(*flight_ms) * FPS))
+            a, b = t, min(n, t + fly)
+            frac = (np.arange(a, b) - a + 1) / float(b - a + 1)
+            bx[a:b] = cur_x + frac * (gx[a:b] - cur_x)
+            by[a:b] = cur_y + frac * (gy[a:b] - cur_y)
+            stay = n if last else min(n, b + int(rng.uniform(*rest_s) * FPS))
+            bx[b:stay], by[b:stay] = gx[b:stay], gy[b:stay]
+            t = stay
+            cur_x, cur_y = bx[t - 1], by[t - 1]
+        w = np.clip((np.arange(n) - (n - blend)) / float(max(blend, 1)), 0, 1)
+        x[s:e] = (1 - w) * bx + w * x1
+        y[s:e] = (1 - w) * by + w * y1
+    out = d["ball"].copy()
+    out[:, 0], out[:, 1] = x / L, y / W
+    return out
+
+
+def prepare_ball(d, seed, animate=True, blur=True, gaps=True):
+    """DFL's ball made to look like ours: dead ball animated, blurred, our gap pattern cut in."""
+    ball = animate_dead_ball(d, seed) if animate else d["ball"]
+    if blur:
+        ball = blur_ball(ball)
+    if gaps:
+        from gap_model import degrade
+        ball = degrade(ball, d["players"], seed=seed)
+    return ball
 
 
 def load(game, rebuild=False):

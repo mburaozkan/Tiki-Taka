@@ -3,8 +3,8 @@
     python tools/train_learned_dfl.py                  # 7 folds, GBM + GRU + blend
     python tools/train_learned_dfl.py --model gbm      # GBM only (faster)
 
-Every DFL match is prepared like ours: ball blurred (dfl_data.blur_ball) and gapped
-(gap_model.degrade), features from pipeline.features with the touch network trained WITHOUT that
+Every DFL match is prepared like ours (dfl_data.prepare_ball: dead ball animated, blurred,
+gapped), features from pipeline.features with the touch network trained WITHOUT that
 match (touch_net_<match>.pt), so its touch probabilities are never in-sample. Labels: the
 controlled-possession labels. The test version of each match uses the same gap seed as
 tools/sweep.py, so the hand model's numbers there (v20: 0.567) are on the same data; training
@@ -43,7 +43,7 @@ TRAIN_VERSIONS = 2
 COST_GRID = {"switch": (6.0, 10.0, 15.0, 20.0, 30.0), "to_dead": (6.0, 10.0, 15.0),
              "from_dead": (2.0, 4.0)}
 MODEL_DIR = os.path.join(dd.DATA_DIR, "cache", "models")
-PROBS = os.path.join(dd.CACHE, "learned_probs.npz")
+PROBS = os.path.join(dd.CACHE, "learned_probs_anim.npz")
 HYBRID_SWITCH = (2.0, 4.0, 6.0, 10.0, 15.0, 20.0)
 
 
@@ -52,12 +52,12 @@ def test_seed(game):
 
 
 def match_features(game, seed, rebuild=False):
-    path = os.path.join(dd.CACHE, "feat_{}_{}.npz".format(game, seed))
+    path = os.path.join(dd.CACHE, "feat_{}_{}_anim.npz".format(game, seed))
     if not rebuild and os.path.isfile(path):
         with np.load(path) as c:
             return {k: c[k] for k in c.files}
     d = dd.load(game)
-    ball = degrade(dd.blur_ball(d["ball"]), d["players"], seed=seed)
+    ball = dd.prepare_ball(d, seed)        # dead ball animated, blurred, our gaps
     model = touch_net.load(os.path.join(MODEL_DIR, "touch_net_{}.pt".format(game)))
     length, width = features.LENGTH, features.WIDTH
     features.LENGTH, features.WIDTH = dd.PITCH

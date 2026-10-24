@@ -7,8 +7,8 @@ Saves each fold's model as data/cache/models/touch_net_<held-out match>.pt (for 
 pipeline on DFL with a network that never saw that match), and with --final also a model
 trained on all 7 as touch_net_all.pt (the one used on our match).
 
-Every match's ball is blurred like ours (dfl_data.blur_ball) and gapped like ours
-(gap_model.degrade); training uses VERSIONS random gap patterns per match, each also with the
+Every match's ball is made to look like ours (dfl_data.prepare_ball: dead ball animated,
+blurred, our gap pattern); training uses VERSIONS random gap patterns per match, each also with the
 teams swapped. The held-out match gets one fixed gap pattern, and both the network and our current
 rule (pipeline.features.touches on the same ball) are scored against the teacher touches
 (tools/touch_labels.py):
@@ -45,7 +45,7 @@ THRESHOLDS = (0.3, 0.5, 0.7)
 def prepared(game, seed):
     """Blurred, gapped ball for one match plus everything needed to build inputs and targets."""
     d = dd.load(game)
-    ball = degrade(dd.blur_ball(d["ball"]), d["players"], seed=seed)
+    ball = dd.prepare_ball(d, seed)        # dead ball animated, blurred, our gaps
     frames, teams, _ = tl.load(game)
     valid = d["period"] > 0
     return d, ball, frames, teams, valid

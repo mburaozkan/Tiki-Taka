@@ -889,6 +889,44 @@ two-state Viterbi over the learned P(H) vs P(A) decides the team.
 learned model can also learn stoppages that look like ours. That is the way to the rest of the
 0.65.
 
+### 2026-10-25: a moving dead ball for DFL, and the semi-Markov decoder
+
+**Dead-ball animation** (`dfl_data.animate_dead_ball`, `prepare_ball`, `sweep.py --animate`).
+Each DFL dead stretch: the ball lies where play stopped (10–50% of the stretch), is passed between
+the 4 players nearest the restart spot (6–15 m/s, rests of 0.3–1.5 s, 0.5–3 m off), and the
+taker brings it to the restart spot.
+
+| ball in stoppages, seen | out | speed | still | >8 m/s | nearest | <1.5 m | >8 m |
+|---|---|---|---|---|---|---|---|
+| DFL as provided | 29% | 0.0 | 98% | 1% | 4.4 m | 13% | 23% |
+| DFL animated | 11% | 3.3 | 44% | 20% | 2.4 m | 28% | 9% |
+| ours (public true D / full-match v21 D) | 10/16% | 2.5/2.4 | 48/51% | 13/19% | 2.9/3.3 m | 35/28% | 17/22% |
+
+Remaining difference: our ball lies far from everyone more often (about 20% vs 9%).
+
+**Retrained on animated DFL** (touch network, then GBM / GRU; 7 rounds holding one match out):
+- Touch network unchanged (F1 0.74). Our old rule's precision drops 0.90 → 0.69: it fires on the
+  moving dead ball.
+- **Hand v20 0.567 → 0.535**: the frozen ball had been flattering its dead-ball rules. Learned
+  blend 0.651 → 0.639. Hybrid 0.542.
+- **Transfer still fails, the other way round:** trained on animated DFL, the full learned model
+  calls 21.7% of our ball-seen live frames dead (D 57.9% over the match; public 0.275 / 0.725). Its
+  team decision keeps improving (wrong team 5.9%). Learned stoppage detection is not trusted on
+  our match. v22 hybrid (new touch network): 231 possessions, public 0.524 / 0.853, worse than
+  v21. **v21 stays.**
+
+**Semi-Markov decoder** (`pipeline/semimarkov.py`, `tools/eval_hsmm.py`): each segment is scored
+as a whole, plus the log-probability of its length (priors from the other six DFL matches).
+- Synthetic test: beats the tuned Viterbi (accuracy 0.977 vs 0.973, 94% of short segments vs
+  77%).
+- On DFL (animated + blur + gaps), no gain. Hand scores: 0.539 vs 0.535 Viterbi. Blend: 0.639 vs
+  0.637. Settings that find twice the short possessions (23–28% vs 14%) score 0.47–0.51: each
+  real short possession comes with a false one.
+- **Short possessions are limited by the evidence, not the decoder.** Kept, off.
+
+**Realistic benchmark now:** DFL with an animated dead ball, blur and our gaps. Hand v20 0.535,
+v21-style hybrid 0.542, learned blend 0.639 (doesn't transfer).
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
@@ -901,8 +939,10 @@ learned model can also learn stoppages that look like ours. That is the way to t
 - **The submission is v21** (`python pipeline/run_learned.py --name v21 --source dfl --model blend
   --hybrid 10`): v20 decides D vs live, the learned blend decides the team. On our match: 261
   possessions, D 37.3%, public 0.66 / 0.88. Realistic test (DFL, blur + gaps): 0.579 / 0.843.
-- **DFL's ball is frozen while dead**, so DFL flatters dead-ball detection. Learned D calls don't
-  transfer until that is fixed.
+- **DFL's ball is frozen while dead**; `dfl_data.prepare_ball` animates it. The realistic benchmark
+  is DFL with an animated dead ball, blur and gaps: v20 0.535, hybrid 0.542. Learned stoppage
+  detection still doesn't transfer to our match, in either training setup.
+- The semi-Markov decoder doesn't help: short possessions are limited by the evidence.
 - **Next:** the shortest possessions; learned evidence (GBM / GRU) retrained on DFL with the
   touch network as input.
 - The public window misranked our versions. It is now only a correctness check, as the ground

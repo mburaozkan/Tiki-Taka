@@ -85,7 +85,7 @@ def touch_model(name):
 
 
 def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=False,
-                     touch_net=False):
+                     touch_net=False, animate=False):
     """[(features, runs, labels)] and the provider's fps. With touch_net, each DFL match gets the
     network trained without it."""
     if provider == "metrica":
@@ -100,6 +100,8 @@ def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=Fa
     for g in mod.GAMES:
         d = mod.load(g)
         ball = d["ball"]
+        if animate:
+            ball = mod.animate_dead_ball(d, seed=sum(map(ord, str(g))))
         if blur:
             from dfl_data import blur_ball
             ball = blur_ball(ball)
@@ -128,6 +130,8 @@ def main():
     parser.add_argument("--degrade", action="store_true", help="cut our gap pattern into the ball")
     parser.add_argument("--ball-fill", choices=("hold", "extrapolate", "interp"))
     parser.add_argument("--blur", action="store_true", help="smooth the external ball like ours")
+    parser.add_argument("--animate", action="store_true",
+                        help="dfl only: give the dead ball motion like ours (dfl_data)")
     parser.add_argument("--touch-net", action="store_true",
                         help="touches from the touch network (pipeline/touch_net.py)")
     parser.add_argument("--touch-threshold", type=float,
@@ -144,7 +148,8 @@ def main():
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
 
     external, fps = ([], 25) if args.provider == "none" else external_matches(
-        args.provider, args.labels, args.degrade, args.ball_fill, args.blur, args.touch_net)
+        args.provider, args.labels, args.degrade, args.ball_fill, args.blur, args.touch_net,
+        args.animate)
     print("{:<16} {:>5} {:>7} {:>6} {:>6}   {:>15}   {}".format(
         "setting", "poss", "median", "direct", "D", "public sp / mF1",
         "{} spellF1 per match | mean, macroF1 mean   recall at IoU {} by true length {}   median "
