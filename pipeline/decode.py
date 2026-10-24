@@ -72,11 +72,14 @@ PARAMS = {
     "still_damp": 0.7,
     # Dead-ball evidence. D score = sum of these - dead_bias.
     "dead_bias": 0.45,
-    "w_gap": 0.8,           # ball missing, scaled by gap length up to gap_full_s
+    "w_gap": 0.4,           # ball missing, scaled by gap length up to gap_full_s (0.8 to v18)
     "gap_full_s": 8.0,
     # A gap is dead evidence only as far as the players are slow: with everyone running, the
     # tracker has lost a ball in play. 0 in v6 (every gap counted fully; D 52.6%), 1 since v8.
-    "gap_gate": 0.0,        # 1 in v8-v12; off since v15: it cost 0.016 spellF1 on Metrica
+    # On in v8-v12, off in v15-v18 (Metrica: -0.016, but Metrica's ball is missing only in
+    # stoppages). On again since v19: on DFL with our gap pattern cut in, +0.042 spellF1 in 7/7
+    # matches, under both label definitions; w_gap 0.4 adds +0.011 (7/7).
+    "gap_gate": 1.0,
     "w_out": 1.5,           # ball outside the pitch
     "w_still": 0.4,         # ball (seen) slower than still_ms
     "still_ms": 2.5,

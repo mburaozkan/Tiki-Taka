@@ -105,7 +105,8 @@ column gives the command for the current code.
 | v10 | firm keeper hold over the whole gap: a keeper holding the ball is never D | 294 | 41% | 40% | 0.60 / 0.88 | `--set w_comove=0` |
 | v11 | cheap switching at clean touches | 235–443 | – | – | 0.51–0.61 | trial, off (`touch_switch`) |
 | v12 | co-movement: the carrier moves with the ball (H/A split only), weight 4 | 303 | 41% | 40% | 0.62 / 0.89 | `--set gap_gate=1 w_comove=4` |
-| **v15** | **chosen on Metrica: v6 + keeper hold + co-movement 1, no gap gate. Metrica 0.713** | **288** | **39%** | **45%** | **0.59 / 0.85** | `python pipeline/run.py --name v15` (default) |
+| v15 | chosen on Metrica: v6 + keeper hold + co-movement 1, no gap gate. Metrica 0.713 | 288 | 39% | 45% | 0.59 / 0.85 | `--set gap_gate=0 w_gap=0.8` |
+| **v19** | **chosen on DFL with our gaps: v15 + gap gate + w_gap 0.4. DFL 0.567 (v15 0.514)** | **294** | **42%** | **37%** | **0.61 / 0.84** | `python pipeline/run.py --name v19` (default) |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -714,16 +715,81 @@ recall by true possession length).
 - **So boundary work needs DFL** (real tracking plus event timestamps) to tune the switch cost and
   touch thresholds, and to train a touch detector. v15 stays the default.
 
+### 2026-10-24 (late): DFL open data, the realistic test set
+
+**Repository:** work moved to our own repository (Tiki-Taka, branch `mirac`). It holds the
+competition starter code (MIT) plus ours; data stays out (`MTAH_DATA_DIR` points at it).
+
+**DFL / Sportec open data** (`tools/dfl_data.py`): 7 German league matches (IDSSE, Bassek et
+al., Scientific Data 2025, CC BY 4.0).
+- Real optical tracking at 25 fps, 22 players. The ball is tracked 100% of the time, dead frames
+  included.
+- Download from `ndownloader.figshare.com/files/<id>`; the springernature.figshare.com links
+  kloppy uses return empty files to scripts. Parsed with our own streaming reader (about 12 s per
+  match). The rules only forbid other possession data for *our* fixture.
+- Every ball frame carries the provider's `BallStatus` (alive/dead) and `BallPossession`
+  (1 home / 2 guest). That is the same kind of per-frame label the competition's ground truth
+  comes from (CHALLENGE.md). Checked: possession 1 = home (nearest player agrees 86–94%), speed is
+  in km/h.
+- **The raw flags switch on any touch:** 6.5–11 possessions per live minute, median 3.0–4.7 s,
+  25–37% under 2 s. Public window: 4.2, 7.6 s, 12%.
+- **Controlled-possession filter:** a flagged possession counts only if its team makes a
+  controlled action inside it, ±1 s. Controlled actions: a pass or cross, a shot, a ball action
+  that isn't a clearance, a won tackle with `PossessionChange`, a keeper claim, or a restart.
+  Otherwise it goes to the previous team. Result: 4.3–7.3 per live minute, median 5.3–9.4 s,
+  8–22% under 2 s. Five matches look like the public window; the two Bundesliga 1 matches stay
+  choppier.
+- Event clocks are offset from the tracking by −0.1 to −1.6 s per match, with about ±0.6 s
+  scatter per event. The offset is estimated per match from passes, using the ball speeding up.
+  Exact touch times must come from the tracking, not the event clock.
+
+**Gap model** (`tools/gap_model.py`): cuts gaps like ours into DFL's ball.
+- A two-state chain over frames, with start and end chances per band of player pace and gaps of
+  at least 3 s.
+- Calibrated on DFL so that the missing-ball share per pace band matches ours: ours 81/42/11/10%,
+  DFL 82/41/12/9%, 40% overall (ours 41%).
+- In DFL, the simulated gaps cover 62% of stoppage time and 21% of live play.
+
+**Results** (`tools/sweep.py --provider dfl [--degrade] [--labels labels]`, mean of 7 matches):
+
+| setting | DFL full ball | DFL + our gaps | same, raw flags | Metrica | public |
+|---|---|---|---|---|---|
+| v15 | 0.623 / 0.882 | 0.514 / 0.794 | 0.504 | 0.768 | 0.588 / 0.854 |
+| switch 20 | 0.599 | 0.502 | | 0.793 | 0.550 |
+| gap gate on | 0.623 | 0.556 / 0.825 | 0.529 | | 0.611 / 0.883 |
+| **gate, w_gap 0.4 (v19)** | 0.623 | **0.567 / 0.833** | **0.537** | 0.741 | 0.611 / 0.840 |
+| gate, w_gap 0.2 | | 0.572 / 0.837 | | | 0.571 / 0.778 |
+| gate + extrapolated ball | | 0.551 | | | 0.629 |
+
+- **DFL behaves like our match** (v15 0.62 with the full ball against public 0.59); Metrica
+  (0.77) was inflated by its rebuilt ball.
+- **Ball gaps cost about 0.11 spellF1** (0.623 → 0.514).
+- **The gap gate wins in 7/7 matches under both label definitions**, +0.042. It was turned off
+  in v15 on Metrica's advice; Metrica's ball is missing only in stoppages. w_gap 0.4 adds +0.011
+  (7/7). 0.2 loses our public stoppages (macroF1 0.78), so we stop at 0.4.
+- Switch 20: better on raw flags, worse on controlled labels. It depends on the label definition,
+  so switch stays 30.
+- Guessing the ball inside gaps doesn't help on realistic data either. Closed.
+- **Short possessions are still the weak spot:** recall at IoU 0.5 is 20% under 4 s (60% for
+  4–10 s, 81% over 10 s). Matched starts are a median 0.2–0.5 s from the truth.
+- **v19 = v15 + gap gate + w_gap 0.4 is the new default.** Our match: 294 possessions, 42%
+  direct, D 37.1%, public 0.611 / 0.840 (the public macroF1 drop is about one stoppage; watch it).
+
+**Next:** the touch detector trained on DFL (events give the touches, tracking gives the exact
+moment), aimed at the short possessions. Then the learned evidence, retrained on DFL.
+
 ## Current situation
+
+- **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
+  filtered to controlled possession, our gap pattern cut in. v19 scores 0.567 / 0.833 there.
 
 - **Metrica is useful for the team decision but not for the ball:** its ball is reconstructed
   (absent in stoppages, sitting on the carrier), so models trained on it misread our dead balls.
   Learned models beat the hand model on Metrica (0.822 vs 0.793), but transfer badly to our match
   (v16: public 0.49 / 0.67).
-- **Pipeline v15 is the default** (`python pipeline/run.py --name v15`). On our match: 288
-  possessions, D 44.5%, public 0.59. Its Metrica-based choices are doubtful; v12 is
-  `--set gap_gate=1 w_comove=4`.
-- **Next:** DFL open data (real tracking), for the honest test and for training.
+- **Pipeline v19 is the default** (`python pipeline/run.py --name v19`), chosen on DFL. On our
+  match: 294 possessions, D 37.1%, public 0.61 / 0.84. v15 is `--set gap_gate=0 w_gap=0.8`.
+- **Next:** a touch detector trained on DFL, aimed at short possessions (recall 20% under 4 s).
 - The public window misranked our versions. It is now only a correctness check, as the ground
   rules always said.
 - Hand-built versions all land between 0.68 and 0.71 on Metrica. The next gain has to come from
