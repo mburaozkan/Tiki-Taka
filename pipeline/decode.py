@@ -107,6 +107,11 @@ PARAMS = {
     # toucher. In the public window touches were right 93% with a 1.5 m margin, 43% under 0.5 m,
     # while the toucher's own distance made no difference (85-92%).
     "touch_margin_m": 1.5,
+    # Turnover network (features turn_p_home / turn_p_away): an H <-> A change into a team is
+    # cheaper by w_turnover x its P(possession changes to that team), max over +/- turnover_half_s.
+    # Capped below the switch cost, so it never makes flicker free. 0 = off.
+    "w_turnover": 0.0,
+    "turnover_half_s": 0.12,
     # Boundary snap: after Viterbi, move each start of a possession (H or A after anything else)
     # to the nearest touch by that team within snap_s, never past the neighbouring boundaries.
     # The decoder finds the possession; the touch says when it began. 0 = off.
@@ -211,6 +216,15 @@ def touch_discount(f, p):
     """(n, 2) H <-> A switch discount per frame: [:, 0] for a change into H, [:, 1] into A."""
     n = len(f["touch"])
     out = np.zeros((n, 2))
+    if p.get("w_turnover", 0) > 0 and "turn_p_home" in f:
+        k = int(round(p["turnover_half_s"] * FPS))
+        for col, key in ((0, "turn_p_home"), (1, "turn_p_away")):
+            prob = np.asarray(f[key], dtype=np.float64)
+            peak = prob.copy()
+            for s in range(1, k + 1):
+                np.maximum(peak[s:], prob[:-s], out=peak[s:])
+                np.maximum(peak[:-s], prob[s:], out=peak[:-s])
+            out[:, col] = np.minimum(p["w_turnover"] * peak, p["switch"] - 1.0)
     if p["touch_switch"] <= 0:
         return out
     k = int(round(p["touch_switch_s"] * FPS))
@@ -220,7 +234,7 @@ def touch_discount(f, p):
         clean = margin >= p["touch_margin_m"]
         hit = ((f["touch"] == side) & clean).astype(np.float64)
         near = np.convolve(hit, np.ones(2 * k + 1), mode="same") > 0
-        out[near, col] = p["touch_switch"]
+        out[near, col] = np.maximum(out[near, col], p["touch_switch"])
     return out
 
 

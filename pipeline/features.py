@@ -401,13 +401,15 @@ def tagging_features(n_frames, events=None):
     return setpiece, np.sign(vote).astype(np.float32), restart, restart_team
 
 
-def build_features(atd=None, events=None, ball_fill=None, touch_model=None):
+def build_features(atd=None, events=None, ball_fill=None, touch_model=None, turnover_model=None):
     """All features as a dict of float32 arrays over every video frame.
 
     ball_fill: None, or a pipeline.ball_fill method; the guessed ball inside gaps then feeds
     d_home/d_away only. Everything else, including ball_seen and gap_s, reads the real track.
     touch_model: None, or a loaded pipeline.touch_net model; its touches then replace the
     velocity-peak rule in touch and last_touch (touch_prob holds its P(home / away touch)).
+    turnover_model: None, or a loaded turnover network (pipeline/touch_net.py trained on
+    possession changes); turn_p_home / turn_p_away hold its P(possession changes to that team).
     """
     atd = atd if atd is not None else load_arrays("tactical")
     players, ball, team = atd["players"], atd["ball"], atd["team"]
@@ -424,7 +426,9 @@ def build_features(atd=None, events=None, ball_fill=None, touch_model=None):
     touch_prob = np.zeros((n, 2), dtype=np.float32)
     if touch_model is not None:
         from pipeline import touch_net
-        prob = touch_net.predict(touch_model, touch_net.inputs(players, ball, team, (LENGTH, WIDTH)))
+        path = len(touch_model[1]) > touch_net.n_base_inputs()
+        prob = touch_net.predict(touch_model, touch_net.inputs(players, ball, team, (LENGTH, WIDTH),
+                                                               path=path))
         touch_prob = prob[:, 1:].astype(np.float32)
         frames, sides = touch_net.pick(prob, touch_net.PICK_THRESHOLD)
         touch = np.zeros(n, dtype=np.float32)
@@ -432,6 +436,13 @@ def build_features(atd=None, events=None, ball_fill=None, touch_model=None):
         dh = np.where(np.isnan(d_home), np.inf, d_home)
         da = np.where(np.isnan(d_away), np.inf, d_away)
         last_touch = carry_last_touch(touch, dh, da, gap)
+    turn_prob = np.zeros((n, 2), dtype=np.float32)
+    if turnover_model is not None:
+        from pipeline import touch_net
+        path = len(turnover_model[1]) > touch_net.n_base_inputs()
+        prob = touch_net.predict(turnover_model, touch_net.inputs(players, ball, team,
+                                                                  (LENGTH, WIDTH), path=path))
+        turn_prob = prob[:, 1:].astype(np.float32)
     hold = keeper_hold(ball, players, team, seen, out)
     m_home, m_away = comove_by_team(players, team, ball)
     shape = team_shape(players, team)
@@ -443,6 +454,7 @@ def build_features(atd=None, events=None, ball_fill=None, touch_model=None):
         "ball_seen": seen, "d_home": d_home, "d_away": d_away,
         "c_home": c_home, "c_away": c_away, "touch": touch, "last_touch": last_touch,
         "touch_p_home": touch_prob[:, 0], "touch_p_away": touch_prob[:, 1],
+        "turn_p_home": turn_prob[:, 0], "turn_p_away": turn_prob[:, 1],
         "keeper_hold": hold, "m_home": m_home, "m_away": m_away,
         "shape": shape, "g_home": g_home, "g_away": g_away,
         "ball_out": out,

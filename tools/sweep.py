@@ -77,15 +77,15 @@ def decode_runs(f, p, runs, n):
     return codes
 
 
-def touch_model(name):
-    """The saved touch network data/cache/models/touch_net_<name>.pt (tools/train_touch.py)."""
+def touch_model(name, stem="touch_net"):
+    """The saved network data/cache/models/<stem>_<name>.pt (tools/train_touch.py)."""
     from games import DATA_DIR
     from pipeline import touch_net
-    return touch_net.load(os.path.join(DATA_DIR, "cache", "models", "touch_net_{}.pt".format(name)))
+    return touch_net.load(os.path.join(DATA_DIR, "cache", "models", "{}_{}.pt".format(stem, name)))
 
 
 def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=False,
-                     touch_net=False, animate=False):
+                     touch_net=False, animate=False, turnover_net=False):
     """[(features, runs, labels)] and the provider's fps. With touch_net, each DFL match gets the
     network trained without it."""
     if provider == "metrica":
@@ -110,7 +110,9 @@ def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=Fa
             ball = cut(ball, d["players"], seed=sum(map(ord, str(g))))
         f = features.build_features({"players": d["players"], "ball": ball,
                                      "team": d["team"]}, events=[], ball_fill=ball_fill,
-                                    touch_model=touch_model(g) if touch_net else None)
+                                    touch_model=touch_model(g) if touch_net else None,
+                                    turnover_model=(touch_model(g, "turnover_net")
+                                                    if turnover_net else None))
         runs = []
         for per in (1, 2):
             idx = np.flatnonzero(d["period"] == per)
@@ -134,6 +136,8 @@ def main():
                         help="dfl only: give the dead ball motion like ours (dfl_data)")
     parser.add_argument("--touch-net", action="store_true",
                         help="touches from the touch network (pipeline/touch_net.py)")
+    parser.add_argument("--turnover-net", action="store_true",
+                        help="turnover network probabilities (use with --set w_turnover=...)")
     parser.add_argument("--touch-threshold", type=float,
                         help="P(touch) needed to call a network touch (touch_net.PICK_THRESHOLD)")
     args = parser.parse_args()
@@ -142,14 +146,15 @@ def main():
         from pipeline import touch_net
         touch_net.PICK_THRESHOLD = args.touch_threshold
 
-    ours = features.build_features(ball_fill=args.ball_fill,
-                                   touch_model=touch_model("all") if args.touch_net else None)
+    ours = features.build_features(
+        ball_fill=args.ball_fill, touch_model=touch_model("all") if args.touch_net else None,
+        turnover_model=touch_model("all", "turnover_net") if args.turnover_net else None)
     ours_runs = [(a, b) for _, a, b in half_runs()]
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
 
     external, fps = ([], 25) if args.provider == "none" else external_matches(
         args.provider, args.labels, args.degrade, args.ball_fill, args.blur, args.touch_net,
-        args.animate)
+        args.animate, args.turnover_net)
     print("{:<16} {:>5} {:>7} {:>6} {:>6}   {:>15}   {}".format(
         "setting", "poss", "median", "direct", "D", "public sp / mF1",
         "{} spellF1 per match | mean, macroF1 mean   recall at IoU {} by true length {}   median "

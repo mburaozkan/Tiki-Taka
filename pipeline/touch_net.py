@@ -7,6 +7,7 @@ labels taken from DFL's sharp raw ball and the provider's flags (tools/touch_lab
 inputs() runs on our match, so the network transfers by construction of its input, not by hope.
 
 Inputs per frame (inputs()), all from positions, so they exist for any tracking provider:
+  (path     per team, who is on the ball's path ahead and who reaches it first; path_columns)
   ball      seen, x, y, vx, vy, speed, velocity change over +/- 3 and +/- 6 frames, time since
             the ball was last seen and until it is seen again, length of the current gap
   players   per team, the N_NEAR players nearest the ball: distance, dx, dy, velocity relative to
@@ -43,6 +44,12 @@ SEED = 0
 # wants sure touches: DFL spellF1 0.553 at 0.5, 0.567 at 0.7, 0.577 at 0.85. Our match is less
 # confident than DFL, and from 0.9 up too few touches survive there (possessions 237, 208), so 0.7.
 PICK_THRESHOLD = 0.7
+# Ball-path inputs (path_columns): who is on the ball's line ahead, and who gets there first.
+PATH_FEATURES = True
+PATH_MIN_MS = 2.0
+PATH_AHEAD_M = 25.0
+PATH_NEAR_M = 3.0
+PATH_FIRST_M = 2.5
 MODEL_PATH = "models/touch_net_all.pt"   # trained on all 7 DFL matches; committed for exact rebuilds
 
 
@@ -67,8 +74,44 @@ def _gap_clocks(seen):
     return since, until, since + until
 
 
-def inputs(players, ball, team, pitch, flip=False):
-    """(n, n_features) float32 per-frame inputs; NaN replaced by 0 (the seen flag says why)."""
+def path_columns(px, py, bx, by, bvx, bvy, team, order, sign):
+    """Per team (in `order`): who is on the ball's path ahead. 4 columns each:
+    lateral distance of the player closest to the path within PATH_AHEAD_M ahead, how far along
+    the path he is, how many players are within PATH_NEAR_M of it, and how far along the path the
+    first player within PATH_FIRST_M of it stands. "No path" (ball slower than PATH_MIN_MS, or
+    unseen) reads as far away / none."""
+    speed = np.hypot(bvx, bvy)
+    moving = speed >= PATH_MIN_MS
+    ux = np.where(moving, bvx / np.maximum(speed, 1e-6), 0.0)
+    uy = np.where(moving, bvy / np.maximum(speed, 1e-6), 0.0)
+    dx, dy = px - bx[:, None], py - by[:, None]
+    along = dx * ux[:, None] + dy * uy[:, None]
+    lat = np.abs(dx * uy[:, None] - dy * ux[:, None])
+    ahead = moving[:, None] & (along > 0) & (along < PATH_AHEAD_M) & ~np.isnan(lat)
+    cols = []
+    for side in order:
+        m = ahead & (team == side)[None, :]
+        lat_m = np.where(m, lat, np.inf)
+        j = np.argmin(lat_m, axis=1)
+        r = np.arange(len(bx))
+        best_lat = lat_m[r, j]
+        has = np.isfinite(best_lat)
+        first = np.where(m & (lat <= PATH_FIRST_M), along, np.inf).min(axis=1)
+        cols += [np.where(has, np.minimum(best_lat, 15) / 5, 3.0),
+                 np.where(has, along[r, j] / PATH_AHEAD_M, 1.0),
+                 np.sum(m & (lat <= PATH_NEAR_M), axis=1) / 3.0,
+                 np.where(np.isfinite(first), first / PATH_AHEAD_M, 1.0)]
+    del sign
+    return cols
+
+
+def n_base_inputs():
+    return 11 + 2 * (6 * N_NEAR + 2) + 1
+
+
+def inputs(players, ball, team, pitch, flip=False, path=PATH_FEATURES):
+    """(n, n_features) float32 per-frame inputs; NaN replaced by 0 (the seen flag says why).
+    path adds path_columns (8 more); models trained without them are run with path=False."""
     L, W = pitch
     n = len(ball)
     sign = -1.0 if flip else 1.0
@@ -119,6 +162,8 @@ def inputs(players, ball, team, pitch, flip=False):
                     np.where(ok_speed, speed, 0).sum(axis=1) / np.maximum(ok_speed.sum(axis=1), 1),
                     np.nan)
     cols.append(window_mean(pace, FPS) / 5)
+    if path:
+        cols += path_columns(px, py, bx, by, bvx, bvy, team, order, sign)
     out = np.stack(cols, axis=1)
     return np.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
 
@@ -136,7 +181,7 @@ def targets(n, frames, teams, flip=False):
     return y
 
 
-def _net(n_in):
+def _net(n_in, dilations=DILATIONS):
     import torch.nn as nn
 
     class Block(nn.Module):
@@ -154,7 +199,7 @@ def _net(n_in):
         def __init__(self):
             super().__init__()
             self.inp = nn.Conv1d(n_in, CHANNELS, 1)
-            self.blocks = nn.Sequential(*[Block(d) for d in DILATIONS])
+            self.blocks = nn.Sequential(*[Block(d) for d in dilations])
             self.out = nn.Conv1d(CHANNELS, 3, 1)
 
         def forward(self, x):                      # x: (B, T, F)
@@ -162,8 +207,11 @@ def _net(n_in):
     return TCN()
 
 
-def train(examples, epochs=EPOCHS, seed=SEED, log=print):
-    """Train on [(X (n, F), y (n,), valid (n,) bool)]; returns (model, mean, std)."""
+def train(examples, epochs=EPOCHS, seed=SEED, log=print, dilations=DILATIONS,
+          weights=(1.0, TOUCH_WEIGHT, TOUCH_WEIGHT)):
+    """Train on [(X (n, F), y (n,), valid (n,) bool)]; returns (model, mean, std).
+    dilations sets the context (the team network uses up to 64, about +/- 5 s); weights are the
+    class weights of none / home / away."""
     import torch
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
@@ -172,10 +220,11 @@ def train(examples, epochs=EPOCHS, seed=SEED, log=print):
     mean, std = stacked.mean(axis=0), stacked.std(axis=0) + 1e-6
     data = [((x - mean) / std, y, v) for x, y, v in examples]
     lengths = np.array([len(y) for _, y, _ in data], dtype=np.float64)
-    model = _net(len(mean)).to(dev)
+    model = _net(len(mean), dilations).to(dev)
+    model.dilations = tuple(dilations)
     opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=LR, total_steps=epochs * STEPS)
-    weight = torch.tensor([1.0, TOUCH_WEIGHT, TOUCH_WEIGHT], device=dev)
+    weight = torch.tensor(list(weights), device=dev, dtype=torch.float32)
     for epoch in range(epochs):
         model.train()
         total = 0.0
@@ -207,7 +256,8 @@ def train(examples, epochs=EPOCHS, seed=SEED, log=print):
 def save(bundle, path):
     import torch
     model, mean, std = bundle
-    torch.save({"state": model.state_dict(), "mean": mean, "std": std}, path)
+    torch.save({"state": model.state_dict(), "mean": mean, "std": std,
+                "dilations": getattr(model, "dilations", DILATIONS)}, path)
 
 
 def load(path):
@@ -215,7 +265,7 @@ def load(path):
     import torch
     saved = torch.load(path, weights_only=False)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    model = _net(len(saved["mean"])).to(dev)
+    model = _net(len(saved["mean"]), saved.get("dilations", DILATIONS)).to(dev)
     model.load_state_dict(saved["state"])
     return model, saved["mean"], saved["std"]
 

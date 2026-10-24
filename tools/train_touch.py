@@ -42,11 +42,19 @@ TOLS_S = (0.2, 0.5)
 THRESHOLDS = (0.3, 0.5, 0.7)
 
 
-def prepared(game, seed):
-    """Blurred, gapped ball for one match plus everything needed to build inputs and targets."""
+def changes(lab):
+    """(frames, teams) where controlled possession starts: H or A after anything else graded."""
+    f = np.flatnonzero(np.isin(lab[1:], (dd.H, dd.A)) & (lab[1:] != lab[:-1])
+                       & (lab[:-1] != dd.X)) + 1
+    return f, (lab[f] == dd.A).astype(np.int8)
+
+
+def prepared(game, seed, target="touch"):
+    """Ball made to look like ours for one match, plus the target events (touches, or possession
+    changes for the turnover network)."""
     d = dd.load(game)
     ball = dd.prepare_ball(d, seed)        # dead ball animated, blurred, our gaps
-    frames, teams, _ = tl.load(game)
+    frames, teams = (tl.load(game)[:2] if target == "touch" else changes(d["controlled"]))
     valid = d["period"] > 0
     return d, ball, frames, teams, valid
 
@@ -99,7 +107,11 @@ def main():
     parser.add_argument("--folds", type=int, default=len(dd.GAMES))
     parser.add_argument("--epochs", type=int, default=tn.EPOCHS)
     parser.add_argument("--final", action="store_true", help="also train on all 7 and save")
+    parser.add_argument("--target", choices=("touch", "turnover"), default="touch",
+                        help="touches (touch_net_*) or controlled possession changes "
+                             "(turnover_net_*)")
     args = parser.parse_args()
+    stem = "touch_net" if args.target == "touch" else "turnover_net"
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     print("building inputs ...", flush=True)
@@ -107,25 +119,29 @@ def main():
     for g in dd.GAMES:
         sets = []
         for v in range(VERSIONS):
-            d, ball, frames, teams, valid = prepared(g, seed=v)
+            d, ball, frames, teams, valid = prepared(g, seed=v, target=args.target)
             for flip in (False, True):
                 x = tn.inputs(d["players"], ball, d["team"], dd.PITCH, flip=flip)
                 sets.append((x, tn.targets(len(x), frames, teams, flip=flip), valid))
         train_sets[g] = sets
 
     rows = {"rule": [], **{"net@{}".format(t): [] for t in THRESHOLDS}}
+    chg = {"rule": [], **{"net@{}".format(t): [] for t in THRESHOLDS}}
     for held in dd.GAMES[:args.folds]:
         print("held out {} ...".format(held), flush=True)
         bundle = tn.train([s for g in dd.GAMES if g != held for s in train_sets[g]],
                           epochs=args.epochs, log=lambda *_: None)
-        tn.save(bundle, os.path.join(MODEL_DIR, "touch_net_{}.pt".format(held)))
-        d, ball, tf, tt, valid = prepared(held, seed=TEST_SEED)
+        tn.save(bundle, os.path.join(MODEL_DIR, "{}_{}.pt".format(stem, held)))
+        d, ball, tf, tt, valid = prepared(held, seed=TEST_SEED, target=args.target)
+        cf, ct = changes(d["controlled"])
         prob = tn.predict(bundle, tn.inputs(d["players"], ball, d["team"], dd.PITCH))
         rf, rt = rule_touches(d, ball)
         rows["rule"].append(scores(rf, rt, tf, tt))
+        chg["rule"].append(scores(rf, rt, cf, ct))
         for th in THRESHOLDS:
             pf, pt = tn.pick(prob, th)
             rows["net@{}".format(th)].append(scores(pf, pt, tf, tt))
+            chg["net@{}".format(th)].append(scores(pf, pt, cf, ct))
         r, n = rows["rule"][-1][0.5], rows["net@0.5"][-1][0.5]
         print("  +/-0.5 s  rule F1 {:.2f} turnover R {:.2f} | net@0.5 F1 {:.2f} turnover R {:.2f}"
               .format(r[2], r[3], n[2], n[3]), flush=True)
@@ -134,17 +150,20 @@ def main():
         print("training on all 7 ...", flush=True)
         bundle = tn.train([s for g in dd.GAMES for s in train_sets[g]], epochs=args.epochs,
                           log=lambda *_: None)
-        tn.save(bundle, os.path.join(MODEL_DIR, "touch_net_all.pt"))
+        tn.save(bundle, os.path.join(MODEL_DIR, "{}_all.pt".format(stem)))
 
     print("\nmean over {} held-out matches".format(args.folds))
     print("{:<10} {:>6} {:>32} {:>32}".format("", "", "within 0.2 s: P  R  F1  turnR  off",
                                               "within 0.5 s: P  R  F1  turnR  off"))
-    for name, rs in rows.items():
-        line = "{:<10}".format(name)
-        for tol in TOLS_S:
-            m = np.nanmean([r[tol] for r in rs], axis=0)
-            line += "   {:.2f} {:.2f} {:.2f} {:.2f} {:+.2f}s".format(*m)
-        print(line)
+    for title, table in (("against its own target ({})".format(args.target), rows),
+                         ("against the true possession changes (controlled labels)", chg)):
+        print(title)
+        for name, rs in table.items():
+            line = "{:<10}".format(name)
+            for tol in TOLS_S:
+                m = np.nanmean([r[tol] for r in rs], axis=0)
+                line += "   {:.2f} {:.2f} {:.2f} {:.2f} {:+.2f}s".format(*m)
+            print(line)
 
 
 if __name__ == '__main__':
