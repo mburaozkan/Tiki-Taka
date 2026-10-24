@@ -1087,6 +1087,33 @@ DFL match out (realistic prep), then the hybrid decoder (hand D vs live, network
   this ball. Unweighted, the team-network hybrid peaks at 0.543 (switch 45), against 0.534 for
   the touch-network pipeline.
 
+### 2026-10-25: broadcast ATD aligned to tactical; as a ball source, no gain
+
+**Alignment** (`tools/broadcast_align.py`): a broadcast frame and a tactical frame are scored by the
+median distance from each broadcast player to the nearest tactical player of the same team. Per
+usable broadcast stretch, a whole-match search for the middle frame gives the offset; every frame
+is then checked at that offset ±2 and accepted under 1 m (slow-motion replays drop out).
+- Orientation: same as tactical. 0.26 m median, against 2.95–3.21 m for every flipped / swapped
+  version.
+- 92% of 193 stretches aligned; 52% of tactical in-half frames get a broadcast frame (median
+  score 0.26 m).
+- Where both have the ball (74% of aligned frames): distance median 0.81 m, p75 2.0 m, p90 5.3 m,
+  57% within 1 m.
+
+**Coverage of our ball gaps** (2,586 s inside the halves): aligned 27%, **broadcast ball on 8%**.
+Live-play gaps (v21's live calls, 1,022 s): 13% filled. Stoppage gaps (1,564 s): 5%. In the
+public window, gap frames within 2 s of a true change: 189, filled: 0. During our gaps the TV is
+mostly on replays and close-ups.
+
+**Pipeline with the gaps filled by the broadcast ball** (v20 settings): 295 possessions (277), D
+38.9% (37.3%), public 0.560 / 0.838 (0.640 / 0.866). Worse: the fills chop long gaps into short
+pieces (changing the gap / stoppage evidence), and the hand-over between two balls that disagree
+by 1–5 m creates jumps and fake touches.
+
+**Conclusion:** the broadcast is not a useful ball source for us. Low coverage exactly where we
+need it, so even a smoothed fill has little to win. The alignment is kept
+(`data/cache/broadcast_align.npz`).
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
