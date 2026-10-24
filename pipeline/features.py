@@ -29,6 +29,7 @@ shape          log(home spread / away spread), spread = std(x) * std(y) of each 
                players, averaged over +/- SHAPE_HALF frames: the team in possession spreads out,
                the defending team compacts. Works with the ball missing. NaN with < 5 players a side
 g_home/g_away  distance (m) from the ball to the goal the home / away team defends
+gap_team       +1 / -1 inside ball gaps: the team the carrier-following says has it (gap_carrier)
 keeper_hold    +1 / -1 while the home / away keeper holds the ball: a ball gap that starts with the
                ball at the keeper inside his own box (a catch), up to KEEPER_HOLD_S; not after the
                ball went out (that is a goal kick being set up)
@@ -70,6 +71,7 @@ TOUCH_R_M = 3.0           # 2.0 in v5
 TOUCH_MIN_MARGIN_M = 0.0
 TOUCH_MAX_MS = 40.0         # faster than this is a tracker jump, not a ball
 TOUCH_RESET_GAP_S = 3.0     # after a gap this long, the last touch is forgotten
+GAP_REACH_M = 3.0           # carrier / receiver at a gap's ends must be this close to the ball
 
 # Smart Tagging codes and which side of the Team tag they say has the ball. +1: the tagged team is
 # in possession. -1: the tagged team is defending, so the other one has it. Codes not listed
@@ -351,6 +353,46 @@ def carry_last_touch(touch, dh, da, gap):
     return last.astype(np.float32)
 
 
+def gap_carrier(players, team, ball, seen, reach_m=GAP_REACH_M):
+    """+1 / -1 per frame inside ball gaps: which team has the ball, by following the carrier.
+
+    At the last seen frame before a gap, the carrier is the player nearest the ball (within
+    reach_m). At the first seen frame after it, the receiver is the player nearest the ball. Same
+    team: that team all through the gap. Other team: possession changed inside the gap, at the
+    frame where the receiving team's nearest player was closest to the carrier (a tackle or an
+    interception); the carrier's team before it, the receiving team after. 0 where either end has
+    nobody within reach, and outside gaps.
+    """
+    n = len(ball)
+    out = np.zeros(n, dtype=np.float32)
+    px, py = players[:, :, 0] * LENGTH, players[:, :, 1] * WIDTH
+    bx, by = ball[:, 0] * LENGTH, ball[:, 1] * WIDTH
+    for start, stop in runs_of(~seen):
+        if start == 0 or stop >= n:
+            continue
+        a, b = start - 1, stop
+        da = np.hypot(px[a] - bx[a], py[a] - by[a])
+        db = np.hypot(px[b] - bx[b], py[b] - by[b])
+        if np.all(np.isnan(da)) or np.all(np.isnan(db)):
+            continue
+        ca, cb = int(np.nanargmin(da)), int(np.nanargmin(db))
+        if da[ca] > reach_m or db[cb] > reach_m:
+            continue
+        ta, tb = team[ca], team[cb]
+        sa, sb = (1.0 if ta == HOME else -1.0), (1.0 if tb == HOME else -1.0)
+        if ta == tb:
+            out[start:stop] = sa
+            continue
+        cx, cy = px[start:stop, ca], py[start:stop, ca]
+        opp = team == tb
+        d = np.hypot(px[start:stop][:, opp] - cx[:, None], py[start:stop][:, opp] - cy[:, None])
+        d = np.nanmin(np.where(np.isnan(d), np.inf, d), axis=1)
+        m = int(np.argmin(d)) if np.isfinite(d).any() else (stop - start) // 2
+        out[start:start + m] = sa
+        out[start + m:stop] = sb
+    return out
+
+
 def mean_player_speed(players):
     """Mean speed (m/s) over the tracked players of each frame. NaN where none is tracked."""
     speed = players[:, :, 2]
@@ -445,6 +487,7 @@ def build_features(atd=None, events=None, ball_fill=None, touch_model=None, turn
         turn_prob = prob[:, 1:].astype(np.float32)
     hold = keeper_hold(ball, players, team, seen, out)
     m_home, m_away = comove_by_team(players, team, ball)
+    gap_team = gap_carrier(players, team, ball, seen)
     shape = team_shape(players, team)
     g_home, g_away = goal_distances(players, team, ball)
     player_speed = window_mean(mean_player_speed(players), PLAYER_SPEED_HALF)
@@ -455,7 +498,7 @@ def build_features(atd=None, events=None, ball_fill=None, touch_model=None, turn
         "c_home": c_home, "c_away": c_away, "touch": touch, "last_touch": last_touch,
         "touch_p_home": touch_prob[:, 0], "touch_p_away": touch_prob[:, 1],
         "turn_p_home": turn_prob[:, 0], "turn_p_away": turn_prob[:, 1],
-        "keeper_hold": hold, "m_home": m_home, "m_away": m_away,
+        "keeper_hold": hold, "m_home": m_home, "m_away": m_away, "gap_team": gap_team,
         "shape": shape, "g_home": g_home, "g_away": g_away,
         "ball_out": out,
         "ball_speed": ball_speed, "gap_s": gap, "player_speed": player_speed,

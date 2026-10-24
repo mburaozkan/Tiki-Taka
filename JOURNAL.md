@@ -951,6 +951,99 @@ calls (its D comes from the hand model), with the ball seen, compared with DFL's
   (hand D, learned team) stays: **v21**.
 - `--exclude` added to `train_learned_dfl.py` and `run_learned.py`.
 
+### 2026-10-25 (night): touches, turnovers, team, oracles, the video, and other sources
+
+**Public possessions under v21** (`tools/spell_table.py`): #2 starts 4.9 s late; #6 starts 7.6 s
+early; #9 runs 12.3 s long, so #10 (0.8 s) is missed and #11 starts 20.7 s early; #12 (1.3 s)
+IoU 0.03; #14 runs 9.6 s long and #15 (3.5 s) is missed (v20 had it at 0.81).
+
+**Touch network at every true public change** (new team's best P within ±3 s; first touch ≥ 0.7):
+- #2: P 0.10. The impact is in the data (13 → 4.7 → 1.7 m/s, turning 48° then 108°), but the
+  nearest player is the other team's (away 2.2 m, home 3.4 m).
+- #10, #12: P 0.53, below the 0.7 cutoff.
+- #8, #9: touch found 1.6–2.1 s late (the second touch).
+- #15: found (0.74, −0.5 s), but v21's learned team decision overruled it.
+
+**Camera** (`tools/camera.py`): planar calibration from the homographies puts the tactical camera
+at x 53 m (halfway line), y 112 m (44 m behind the far touchline), 29 m up, focal ~2300 px,
+consistent over the match. Airborne balls would appear displaced if the ATD mapped them through
+the ground plane, but **they are not displaced**:
+- where the ATD gives a height (8.7% of seen frames), high balls sit close to players (>3 m: 1.6 m),
+  and un-projecting makes it worse (5.3 m);
+- where the height switches on or off, the ball moves a normal 0.22–0.33 m (uncorrected
+  positions would jump 1–24 m).
+
+**Ball-path inputs for the touch network** (`touch_net.path_columns`: per team, lateral distance
+and position along the ball's path ahead, players near the path, first interceptor): touch F1
+0.74, turnover touches 0.54, the same as without them.
+
+**Turnover network** (`train_touch.py --target turnover`, trained on controlled possession
+changes). Finding true changes within ±0.5 s on held-out DFL:
+
+| model | precision | recall | F1 |
+|---|---|---|---|
+| touch rule | 0.07 | 0.36 | 0.11 |
+| touch network (0.5) | 0.07 | 0.51 | 0.12 |
+| turnover network (0.3) | 0.31 | 0.35 | 0.33 |
+
+As soft cheaper switches in the decoder (`w_turnover`): DFL 0.534 → 0.538 at best.
+
+**Oracle tests** (DFL realistic, touch-network pipeline 0.534 / 0.811):
+
+| perfect … | spellF1 | macroF1 | short (<4 s) found |
+|---|---|---|---|
+| change points (as cheaper switches) | 0.574–0.592 | 0.820 | 26–27% |
+| dead-ball evidence | 0.577 | 0.848 | 16% |
+| team evidence | **0.732–0.763** | 0.873–0.884 | 28–33% |
+
+**The bottleneck is knowing which team has the ball.**
+
+**Team network** (`tools/train_team.py`: inputs plus touch probabilities, ±5 s context, live
+frames). Per-frame team accuracy on held-out DFL: hand 82.1%, learned blend 88.6%, **team network
+87.9%**. Hybrid decoder 0.538. Its errors: 57% within 2 s of a change (error rate 24–35% there),
+36% inside ball gaps, 5.5% error in settled play with the ball seen.
+
+**Ball detector on the tactical video** (`tools/vision_dataset.py`, `pipeline/ball_net.py`,
+`tools/train_ball.py`, `tools/review_ball.py`; local only):
+- Ball diameter 4.6–8.1 px (median 5.9). The camera pans; 26% of the pitch corners are in view
+  on average. OpenCV decodes 244 frames/s.
+- Labels: the ATD ball projected through the homography, on frames where it is steady. 7,315
+  ball crops and 3,619 without, 160 px, 3 frames; the last 20% of each half held out.
+- U-Net with focal loss. The first run spilled GPU memory (7.8 / 8 GB); rerun with fp16, batch 32,
+  crops in RAM: 53 s per epoch.
+- **Held out: median error 13.2 px, 33% within 6 px; at P ≥ 0.3, found 26% with 0.9% false
+  alarms.** Training loss fell steeply late, so likely memorising. Labels possibly off the ball.
+- **Dropped at the user's call:** we need gap filling and possession logic, not a new ball track.
+
+**Signed boundary offsets** (DFL realistic): turnovers −0.04 s median (no systematic delay; the
+0.5–0.65 s "start offset" is spread, not lag); restarts +0.80 s (probably the dead-ball
+animation; our public restarts are early in 3 of 4); stoppage starts −0.16 s. No shift.
+
+**Carrier-following in gaps** (`features.gap_carrier`, `w_gapcarry`): follow the last carrier; if
+the ball comes back near the other team, change at the moment an opponent was closest. DFL
+0.532–0.534 (no gain). It answers on 47% of live gap frames and is right 77% of the time, while
+the decoder alone is right 87%; on the decoder's wrong gap frames it is right only 21%. 19% of
+turnovers happen inside a gap. Off.
+
+**Smart Tagging vs possession:**
+- Public window: the tag names a team on 71% of live frames and agrees 77% of the time.
+- At the 12 true turnovers it switches to the new team within 10 s once (3.6 s early); 9 never
+  switch.
+- Full match vs v21's turnovers (proxy): 72 of 148 never switch, timing spread ±4 s.
+- **Tags follow phases of play, not possession.** Kept at the hand model's 0.5 weight only.
+
+**Broadcast ATD, a first look:** 164,488 frames. 61% of frames have ≥ 10 players tracked
+(tactical 90%). On those, the ball is seen 79% of the time (tactical 60%). Not sharper (peaks/min
+3.8 / 3.7 / 14.0 vs tactical 6.8 / 7.4 / 16.8). Not time-aligned with tactical; would need
+alignment by player formations to fill tactical gaps.
+
+**Ideas not yet tried:**
+- Broadcast ATD as a second ball source.
+- More training data for the team / touch networks: PFF FC World Cup 2022 open data (64 matches,
+  tracking + events); check licence and format.
+- A systematic search of the hand model's ~30 parameters on realistic DFL.
+- Training the networks on segments / boundaries instead of frames.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags

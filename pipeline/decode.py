@@ -60,6 +60,8 @@ PARAMS = {
     # Team vote for his side, and the gap evidence is switched off while it lasts.
     "w_keeper": 3.0,        # firm: outweighs any dead evidence (1 in v9, 0 before)
     "w_tag": 0.5,           # Smart Tagging phase team vote
+    # Carrier-following in ball gaps (features gap_team): team vote inside gaps, H/A split only.
+    "w_gapcarry": 0.0,
     # Guessed ball inside gaps (run.py --ball-fill): how much its nearest-player vote counts in
     # gap frames, for which team (side) and for alive vs dead (alive). No effect without a fill.
     "w_fill_side": 1.0,
@@ -196,6 +198,8 @@ def emissions(f, p=PARAMS):
     #   Adding it to both (v5_t1) carried it through stoppages and outvoted D: macroF1 0.86 -> 0.73.
     #   Lowering only the non-toucher (v5n) turned team disagreements into D: D share up to 59%.
     side = team_side + p["w_touch"] * f["last_touch"]
+    if p.get("w_gapcarry", 0) and "gap_team" in f:
+        side = side + p["w_gapcarry"] * f["gap_team"]
     alive = np.abs(team) + p["w_moving"] * moving
     out[:, H] = alive - 2.0 * np.maximum(0.0, -side)
     out[:, A] = alive - 2.0 * np.maximum(0.0, side)
