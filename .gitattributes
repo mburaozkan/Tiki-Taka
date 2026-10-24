@@ -1,0 +1,2 @@
+# Trained model files must be checked out byte for byte (exact rebuilds of the submission).
+models/** binary
