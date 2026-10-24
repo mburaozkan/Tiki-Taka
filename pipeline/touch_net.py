@@ -209,16 +209,18 @@ def _net(n_in, dilations=DILATIONS):
 
 def train(examples, epochs=EPOCHS, seed=SEED, log=print, dilations=DILATIONS,
           weights=(1.0, TOUCH_WEIGHT, TOUCH_WEIGHT)):
-    """Train on [(X (n, F), y (n,), valid (n,) bool)]; returns (model, mean, std).
+    """Train on [(X (n, F), y (n,), valid (n,) bool[, weight (n,)])]; returns (model, mean, std).
+    An optional per-frame weight multiplies each frame's loss (e.g. per-possession weighting).
     dilations sets the context (the team network uses up to 64, about +/- 5 s); weights are the
     class weights of none / home / away."""
     import torch
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    stacked = np.concatenate([x[v] for x, _, v in examples])
+    stacked = np.concatenate([e[0][e[2]] for e in examples])
     mean, std = stacked.mean(axis=0), stacked.std(axis=0) + 1e-6
-    data = [((x - mean) / std, y, v) for x, y, v in examples]
+    data = [((e[0] - mean) / std, e[1], e[2].astype(np.float32) * (e[3] if len(e) > 3 else 1.0))
+            for e in examples]
     lengths = np.array([len(y) for _, y, _ in data], dtype=np.float64)
     model = _net(len(mean), dilations).to(dev)
     model.dilations = tuple(dilations)

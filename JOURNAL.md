@@ -1044,6 +1044,31 @@ alignment by player formations to fill tactical gaps.
 - A systematic search of the hand model's ~30 parameters on realistic DFL.
 - Training the networks on segments / boundaries instead of frames.
 
+### 2026-10-25: broadcast data check; possession-weighted training started
+
+**Broadcast recording, basic check** (ATD + homography only; the broadcast video file is not in
+data/, and isn't needed):
+
+| | tactical | broadcast |
+|---|---|---|
+| frames | 199,319 (133 min) | 164,488 (110 min, includes replays and cut-aways) |
+| track slots / per team | 46 / 24 + 22 | 51 / 26 + 25 |
+| homography valid | 100% | 66% |
+| ≥ 10 players tracked | 90% | 61% |
+| usable (≥ 10 players + homography) | 120 min | 67 min, 193 stretches, median 12.8 s, 90% of the time in stretches ≥ 10 s |
+| ball seen where usable | 60% | **79%** |
+
+The broadcast covers about two-thirds of the match in alignable stretches and has the ball more
+often there. Its ball was not sharper in the earlier peak check (possibly provider-filled).
+Alignment to tactical (by player formations) and a ball-to-ball comparison where both exist come
+next.
+
+**Possession-weighted team network** (`tools/train_team.py --weighting possession`): every true
+possession gets the same total loss weight (mean length / own length, capped at 20), and frames
+within ±1 s of a change get 4× that. Training-side weights: median 1, p99 18.8, max 80. Running;
+it will be compared with the unweighted team network (hybrid 0.538) on DFL spellF1 and
+short-possession recall.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
