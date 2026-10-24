@@ -14,7 +14,8 @@ possession length and the median start offset of matched possessions.
 Providers: metrica (3 matches, event-derived labels) or dfl (7 matches; --labels controlled, the
 default, or labels, the provider's raw possession flags; see tools/dfl_data.py). --degrade cuts
 ball gaps like ours into the external ball track (tools/gap_model.py; DFL's ball is never lost).
---ball-fill guesses the ball inside gaps on every match (pipeline/ball_fill.py).
+--ball-fill guesses the ball inside gaps on every match (pipeline/ball_fill.py). --blur smooths the
+external ball like ours (dfl_data.blur_ball, applied before the gaps are cut).
 """
 
 import argparse
@@ -76,7 +77,7 @@ def decode_runs(f, p, runs, n):
     return codes
 
 
-def external_matches(provider, label_key, degrade=False, ball_fill=None):
+def external_matches(provider, label_key, degrade=False, ball_fill=None, blur=False):
     """[(features, runs, labels)] and the provider's fps."""
     if provider == "metrica":
         import metrica_data as mod
@@ -90,6 +91,9 @@ def external_matches(provider, label_key, degrade=False, ball_fill=None):
     for g in mod.GAMES:
         d = mod.load(g)
         ball = d["ball"]
+        if blur:
+            from dfl_data import blur_ball
+            ball = blur_ball(ball)
         if degrade:
             from gap_model import degrade as cut
             ball = cut(ball, d["players"], seed=sum(map(ord, str(g))))
@@ -113,6 +117,7 @@ def main():
                         help="dfl only: controlled possession (default) or the raw flags")
     parser.add_argument("--degrade", action="store_true", help="cut our gap pattern into the ball")
     parser.add_argument("--ball-fill", choices=("hold", "extrapolate", "interp"))
+    parser.add_argument("--blur", action="store_true", help="smooth the external ball like ours")
     args = parser.parse_args()
     settings = [parse_setting(s) for s in args.settings]
 
@@ -121,7 +126,7 @@ def main():
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
 
     external, fps = ([], 25) if args.provider == "none" else external_matches(
-        args.provider, args.labels, args.degrade, args.ball_fill)
+        args.provider, args.labels, args.degrade, args.ball_fill, args.blur)
     print("{:<16} {:>5} {:>7} {:>6} {:>6}   {:>15}   {}".format(
         "setting", "poss", "median", "direct", "D", "public sp / mF1",
         "{} spellF1 per match | mean, macroF1 mean   recall at IoU {} by true length {}   median "

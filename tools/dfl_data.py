@@ -62,6 +62,9 @@ SECTIONS = ("firstHalf", "secondHalf")
 EVENT_TOL_S = 1.0          # a controlled action this close to a possession counts for it
 LAG_SEARCH = 50            # +/- frames searched for the per-match event offset
 RESTARTS = ("ThrowIn", "FreeKick", "GoalKick", "CornerKick", "Penalty")
+# Our ball track is time-blurred: DFL's ball smoothed with a Gaussian of this many frames (0.24 s)
+# matches our velocity-change peak profile at every scale (tools/ball_realism.py, JOURNAL.md).
+BLUR_SIGMA = 6
 
 _FRAMESET = re.compile(r'<FrameSet GameSection="(\w+)"[^>]*TeamId="([^"]+)"[^>]*PersonId="([^"]+)"')
 _FRAME = re.compile(r'<Frame N="(\d+)"[^>]*? X="([-\d.]+)" Y="([-\d.]+)"(?: Z="([-\d.]+)")?'
@@ -219,6 +222,25 @@ def build(game):
     out["event_lag"] = np.array(lag)
     out["events"] = np.array([(f, t, int(c)) for f, t, _, c in evts], dtype=np.int64)
     out["event_kind"] = np.array([k for _, _, k, _ in evts])
+    return out
+
+
+def blur_ball(ball, sigma=BLUR_SIGMA):
+    """Copy of ball with x, y Gaussian-smoothed over sigma frames, gaps left as they are."""
+    if sigma <= 0:
+        return ball
+    r = int(3 * sigma)
+    w = np.exp(-0.5 * (np.arange(-r, r + 1) / float(sigma)) ** 2)
+    w /= w.sum()
+    out = ball.copy()
+    for c in (0, 1):
+        v = ball[:, c].astype(np.float64)
+        ok = ~np.isnan(v)
+        num = np.convolve(np.where(ok, v, 0.0), w, "same")
+        den = np.convolve(ok.astype(np.float64), w, "same")
+        smooth = np.where(den > 0.5, num / np.maximum(den, 1e-9), np.nan)
+        smooth[~ok] = np.nan
+        out[:, c] = smooth
     return out
 
 
