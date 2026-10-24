@@ -778,6 +778,36 @@ al., Scientific Data 2025, CC BY 4.0).
 **Next:** the touch detector trained on DFL (events give the touches, tracking gives the exact
 moment), aimed at the short possessions. Then the learned evidence, retrained on DFL.
 
+### 2026-10-24 (night, later): our ball is blurred; touch labels on DFL
+
+**Ball realism** (`tools/ball_realism.py`, live play with the ball seen):
+- DFL matches ours on speed (6.0–6.6 vs 6.4 m/s) and distance to the nearest player (1.4–1.7 vs
+  1.9 m). Metrica's ball sat on the carrier (0.3 m) and was far too smooth.
+- **Our ball track is time-blurred.** Sharp velocity changes are almost absent (over ±1 frame,
+  ≥4 m/s: 1.5 per live minute; DFL 17–40). At the 0.5 s scale the counts are close.
+  **DFL's ball smoothed with a Gaussian of σ = 6 frames (0.24 s) matches our profile at every
+  scale** (`dfl_data.blur_ball`, `sweep.py --blur`). This is why touches on our match look soft and
+  late.
+- DFL with our blur and our gaps: v15 0.458 / 0.772, **v19 0.511 / 0.812 (7/7)**, v19 + switch 20
+  0.490. The blur alone costs 0.056 and moves matched starts from 0.45 s to 0.9–1.0 s late.
+  Possessions under 4 s: 12% found.
+
+**Touch labels** (`tools/touch_labels.py`): a teacher on DFL's sharp raw ball. A student (next)
+will see only the blurred, gapped ball.
+- Source 0, the sharp ball: a velocity-change peak ≥ 2 m/s with a player within 2 m, while
+  alive. It finds 83% of tagged passes within 1 s, 76% of shots, but only 44–57% of dribbles,
+  tackles and claims, and 0–15% of restarts (those frames are flagged dead).
+- Source 1, restarts: BallStatus dead → alive, by the team that takes over.
+- Source 2, possession switches: BallPossession changing team while alive.
+- Merged (same team within 0.2 s = one touch): 46–49 touches per live minute in the five
+  2. Bundesliga matches, 71–78 in the two Bundesliga 1 matches (whose ball is also the noisiest).
+  91% of touches are by the team the flags give the ball to.
+- Event matching rises with the window (29% at ±0.3 s, 66% at ±1 s): the hand-tagged event clock
+  scatters, so exact touch times come from the tracking.
+
+**Next:** the student network: blurred and gapped DFL ball plus players in, P(touch by home / by
+away) per frame out. Train on 6 matches, test on the 7th, and compare with our current touch rule.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
