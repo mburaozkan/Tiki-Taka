@@ -1069,6 +1069,24 @@ within ±1 s of a change get 4× that. Training-side weights: median 1, p99 18.8
 it will be compared with the unweighted team network (hybrid 0.538) on DFL spellF1 and
 short-possession recall.
 
+### 2026-10-25: possession-weighted training, result
+
+Team network with per-possession loss weights (`--weighting possession`), 7 rounds holding one
+DFL match out (realistic prep), then the hybrid decoder (hand D vs live, network for the team):
+- Per-frame team accuracy 85.6% (unweighted 87.9%).
+- Over the switch cost, from saved held-out probabilities:
+
+| team network | switch 20 | 30 | 45 | 60 | 90 |
+|---|---|---|---|---|---|
+| unweighted: spellF1 / short found | 0.538 / 14% | 0.541 / 13% | **0.543** / 11% | 0.540 / 9% | 0.538 / 8% |
+| possession-weighted | 0.502 / 17% | 0.517 / 16% | 0.530 / 14% | 0.530 / 12% | 0.538 / 10% |
+
+- **No gain.** At equal short-possession recall the weighted network is behind (14%: 0.530 vs
+  0.538). It finds more short possessions only with as many false switches, the same pattern as
+  the semi-Markov decoder: the evidence for a 1–2 s possession isn't separable from noise with
+  this ball. Unweighted, the team-network hybrid peaks at 0.543 (switch 45), against 0.534 for
+  the touch-network pipeline.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
