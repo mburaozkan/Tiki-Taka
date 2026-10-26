@@ -51,6 +51,8 @@ def main():
     parser.add_argument("--hidden", type=int, default=64)
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--conv", type=int, default=0)
+    parser.add_argument("--players", type=int, default=0,
+                        help="per-player inputs: the K players per team nearest the ball")
     parser.add_argument("--crop-s", type=float, default=120.0)
     parser.add_argument("--steps", type=int, default=1500)
     parser.add_argument("--seeds", type=int, default=3)
@@ -60,6 +62,7 @@ def main():
                              "evaluation/results/<tag>.csv on our match, and stop")
     args = parser.parse_args()
     refine.BIN, refine.HIDDEN, refine.LAYERS, refine.CONV = args.bin, args.hidden, args.layers, args.conv
+    refine.PLAYERS = args.players
     refine.CROP_S = args.crop_s
     cache = os.path.join(dd.CACHE, "refine_{}.npz".format(args.tag))
 
@@ -74,6 +77,11 @@ def main():
         ctx[g] = (f, blocks(d["period"]), p1)
         ex[g] = [(refine.inputs(p1, hand, f, cols, flip),) + refine.targets(lab, flip)
                  for flip in (False, True)]
+        if args.players:
+            ball = dd.prepare_ball(d, test_seed(g))     # the ball the features were built on
+            ex[g] = [e + (refine.player_inputs(d["players"], d["team"], ball, d["period"],
+                                               dd.PITCH, flip=flip),)
+                     for e, flip in zip(ex[g], (False, True))]
 
     if args.ours:
         ours(ex, args, *args.ours)
@@ -90,7 +98,8 @@ def main():
             t0 = time.time()
             bundle = refine.train([e for o in dd.GAMES if o != g for e in ex[o]], steps=args.steps,
                                   seed=seed, log=lambda *_: None)
-            probs[key] = refine.predict(bundle, ex[g][0][0], ex[g][1][0], len(data[g][0]))
+            pp = (ex[g][0][3], ex[g][1][3]) if args.players else (None, None)
+            probs[key] = refine.predict(bundle, ex[g][0][0], ex[g][1][0], len(data[g][0]), *pp)
             np.savez(cache, **probs)
             print("  {} seed {} trained in {:.0f} s".format(g, seed, time.time() - t0), flush=True)
 
@@ -166,7 +175,10 @@ def ours(ex, args, alpha, sw):
     cols = idt.player_columns(atd["players"], atd["team"], groups, (LENGTH, WIDTH))
     p1 = stage1(prob, f)
     xs = (refine.inputs(p1, hand, f, cols), refine.inputs(p1, hand, f, cols, True))
-    p = np.mean([refine.predict(b, xs[0], xs[1], len(hand)) for b in bundles], axis=0)
+    pp = ((refine.player_inputs(atd["players"], atd["team"], atd["ball"], groups, (LENGTH, WIDTH)),
+           refine.player_inputs(atd["players"], atd["team"], atd["ball"], groups, (LENGTH, WIDTH),
+                                flip=True)) if args.players else (None, None))
+    p = np.mean([refine.predict(b, xs[0], xs[1], len(hand), *pp) for b in bundles], axis=0)
     codes = decode(hand, p1, p, f, blk, alpha, sw)
     v27 = decode(hand, p1, np.full(len(hand), 0.5), f, blk, 0.0, 10.0)
     out = write_submission(os.path.join(RESULTS_DIR, args.tag + ".csv"), codes)
