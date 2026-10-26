@@ -1387,7 +1387,23 @@ centre (cuDNN rejects a 200k-step sequence); at 5 fps this gives exactly the sam
   the slow team reaction, not frame-exact timing.
 - Nested selection of (alpha, switch) is noisy because the grid is flat (ensemble nested +0.0005 to
   +0.005); every setting of the 5 fps model beats v27, so a fixed setting is the honest choice.
-- Next: around 5 fps, 12.5 / 2.5 fps, hidden 128, 3 layers, 4-minute crops, 3000 steps.
+- Around 5 fps (3 seeds each; v27 = 0.560):
+
+| configuration | per-frame | mean gain, 12 settings | settings ≥ 6/7 | alpha 0.5 / sw 10 | ensemble nested |
+|---|---|---|---|---|---|
+| **12.5 fps** (bin 2) | 90.1% | **+0.0100** | **12 of 12** | +0.0092 (6/1) | **0.570 (+0.010, 5/2)** |
+| 5 fps (v28's) | 90.1% | +0.0077 | 9 of 12 | +0.0066 (6/0) | 0.561 |
+| 5 fps, 3000 steps | | +0.0076 | 9 of 12 | +0.0066 (5/2) | 0.564 |
+| 5 fps, 3 layers | 89.8% | +0.0066 | 8 of 12 | +0.0036 (4/3) | 0.569 |
+| 5 fps, hidden 128 | 89.8% | +0.0061 | 6 of 12 | +0.0044 (5/2) | 0.573 |
+| 2.5 fps (bin 10) | 89.8% | +0.0058 | 7 of 12 | +0.0052 (6/1) | 0.567 |
+| 5 fps, 4-minute stretches | 89.8% | +0.0054 | 9 of 12 | +0.0055 (7/0) | 0.569 |
+| 25 fps + 2 conv | 89.7% | +0.0053 | 4 of 12 | +0.0061 (5/2) | 0.566 |
+
+- **12.5 fps is the sweet spot**: finer than 5 fps without making the GRU carry 25 fps sequences;
+  every setting beats v27 in at least 6 of 7 matches. Bigger or deeper networks, longer stretches
+  and longer training do not help (7 training matches are enough for the small network).
+- Next: 12.5 fps with 5 seeds, 8.3 fps, 12.5 fps with one conv layer; then the winner on our match.
 
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
