@@ -227,7 +227,14 @@ def ours(weights, source="strong"):
             sets.append((player_cols_cached(g, dd.load(g)), lab, np.isin(lab, (H, A))))
         print("ours: decoded pseudo-labels {:.1f}% of graded frames".format(
             100 * dmask[graded].mean()))
-        p_po = predict_po(train_po_multi(sets), cols)
+        model_path = os.path.join(ROOT, "models", "po_team_v25.txt")
+        if os.path.isfile(model_path) and not RETRAIN:
+            import lightgbm as lgb
+            model = lgb.Booster(model_file=model_path)
+        else:
+            model = train_po_multi(sets)
+            model.save_model(model_path)
+        p_po = predict_po(model, cols)
         stem = "v25"
     print("ours: pseudo-labelled {:.1f}% of graded frames, weak {:.1f}%; players-only agrees "
           "with v21's team on {:.1f}% of v21's live weak frames".format(
@@ -246,6 +253,7 @@ def ours(weights, source="strong"):
 DECODED_MARGIN_S = 2.0    # decoded pseudo-labels: this far from any decoded change of team
 DECODED_MIN_P = 0.8       # and the base model's P(team | live) at least this
 VAR_W = (0.25, 0.5)
+RETRAIN = False           # --retrain: train the v25 players-only model again (else models/)
 
 
 def decoded_pseudo(codes, prob):
@@ -366,9 +374,15 @@ def main():
     parser.add_argument("--skip-dfl", action="store_true")
     parser.add_argument("--source", choices=("strong", "dfl+decoded"), default="strong",
                         help="--ours: pseudo-label source of the players-only model")
+    parser.add_argument("--retrain", action="store_true",
+                        help="--ours --source dfl+decoded: retrain models/po_team_v25.txt")
+    parser.add_argument("--weights", type=float, nargs="*", default=list(WEIGHTS),
+                        help="--ours: vote weights to write (v25 is w 0.5)")
     parser.add_argument("--variants", action="store_true",
                         help="pseudo-label sources x gates x weights on DFL (variants())")
     args = parser.parse_args()
+    global RETRAIN
+    RETRAIN = args.retrain
     if args.variants:
         variants()
         return
@@ -376,7 +390,7 @@ def main():
         dfl_validation()
     if args.ours:
         sys.path.insert(0, os.path.join(ROOT, "pipeline"))
-        ours(WEIGHTS, args.source)
+        ours(args.weights, args.source)
 
 
 if __name__ == '__main__':

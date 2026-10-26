@@ -1276,7 +1276,7 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | v24_w1 (v21 + in-domain vote, w 1) | 0.690 / 0.878 | DFL 0.536–0.540 (below no vote) |
 | realistic DFL (7 matches, folds won) | v25_w0.5 (v21 + players-only vote, DFL + decoded pseudo-labels) | 0.551 vs 0.541 (5/7, passes) | public 0.684 / 0.881 |
-| submitted file | v21 | public 0.658 / 0.877 | DFL 0.547 (same setting) |
+| **submitted file (since 2026-10-26)** | **v25_w0.5** | public 0.684 / 0.881 | DFL 0.551 (v21 0.541, same setting) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
   filtered to controlled possession, our gap pattern cut in. v19 scores 0.567 / 0.833 there.
@@ -1285,7 +1285,10 @@ only our match after our own changes to it), but both are tracked and worked fro
   (absent in stoppages, sitting on the carrier), so models trained on it misread our dead balls.
   Learned models beat the hand model on Metrica (0.822 vs 0.793), but transfer badly to our match
   (v16: public 0.49 / 0.67).
-- **The submission is v21** (`python pipeline/run_learned.py --name v21 --source dfl --model blend
+- **The submission is v25_w0.5** (2026-10-26): v21 plus the in-domain players-only team vote
+  (`python tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded --weights 0.5`; model
+  `models/po_team_v25.txt`, a rebuild gives a byte-identical file). Before it: v21
+  (`python pipeline/run_learned.py --name v21 --source dfl --model blend
   --hybrid 10`): v20 decides D vs live, the learned blend decides the team. On our match: 261
   possessions, D 37.3%, public 0.66 / 0.88. Realistic test (DFL, blur + gaps): 0.579 / 0.843.
 - **DFL's ball is frozen while dead**; `dfl_data.prepare_ball` animates it. The realistic benchmark
