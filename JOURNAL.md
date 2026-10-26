@@ -1114,6 +1114,22 @@ by 1–5 m creates jumps and fake touches.
 need it, so even a smoothed fill has little to win. The alignment is kept
 (`data/cache/broadcast_align.npz`).
 
+### 2026-10-26: ATD channel check (does our ATD carry ball-dead or owning-team?)
+
+`tools/atd_channels.py` prints the export's structure only (channel ids, field counts).
+- **XML DataFormatSpecification:** per track slot `x`, `y`, `speed` (46 slots tactical, 51
+  broadcast), and the ball `x`, `y`, `s`. Nothing else: no ball-status, owning-team or any other
+  channel.
+- **.txt:** every one of the 199,319 / 164,488 lines has 3 `:` groups, 46 / 51 player items and a
+  ball item, each with exactly 3 fields. `atd_cache.py` already reads every field.
+- **kloppy:** `ball_state` and `ball_owning_team` are `None` on every frame.
+- Provider parameters: half start/end, attack direction, and per slot `position_type`. Two slots
+  are tagged `Goalkeeper` (one per team), tracked on 90% of frames, but their median x is 0.24 /
+  0.84 of the pitch, so the slot does not stay on the keeper (identities swap). Not usable as a
+  keeper id.
+- **Conclusion: negative.** The uncorrected versions of the GT's ball-dead / owning-team fields
+  are not in what we were given; there is nothing to add as a feature or decoder prior.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
