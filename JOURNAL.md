@@ -1324,6 +1324,24 @@ On our match (`--ours`, from v25's saved inputs):
   slow_ms=2 + D w=0.5 vote_s=2" --name v27`. **Adopted as the submission (`v27.csv`)**; the
   rebuild is byte-identical to v27_4.
 
+### 2026-10-26: future team reaction, step 1: votes in the team stage (experiment 6)
+
+`tools/eval_reaction.py`. The reaction features (`pipeline/reaction.py`, attack direction per half
+from each team's mean position) as an extra vote in v27's team stage (H/A split only), DFL held
+out, reference v27 **0.560** (direct turnovers found within 5 s 54%, median offset 0.00 s, 65%
+within 1 s; 44.6 false switches per hour inside true possessions ≥ 10 s):
+- **spread shifted ahead** (shape at t + 2 / 4 / 6 s): worse everywhere, −0.002 to −0.019, at
+  most 2/7. The team's shape still follows the old possession too long, or flips with play
+  that is not a turnover.
+- **spread change** (future minus past over 2 / 4 / 6 s): −0.000 to −0.005, at most 4/7, and
+  more false switches in long possessions (up to 48.9 / h): teams reshape inside possessions too.
+- **centroid shifted / change**: best +0.0017 (change over 2 s, w 1), 4/7; everything within
+  ±0.002 or worse.
+- Turnover timing barely moves in any setting (found 49–54%, 62–66% within 1 s).
+- **No setting passes; rejected.** As a separate vote, team reaction adds nothing to a team stage
+  that already reads touches, co-movement, the players-only vote and the touch-margin vote.
+  Step 3 (the second-stage network, which can combine it with everything else) is running.
+
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
 ±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%
