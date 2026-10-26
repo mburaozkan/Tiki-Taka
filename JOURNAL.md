@@ -1490,6 +1490,20 @@ Grid beta (0.5, 1) x gamma (0, 0.5, 1, 2) x cost (10, 25, 50, 100); v29 = 0.571.
   --ours 0.5 0.5 25` after the v25 and v29 builds; `models/dead_d1n_s0..2.pt`); rebuild
   byte-identical (5e4e5839…). Not yet the submission.
 
+### 2026-10-27: leak-free second stage on 3 gap patterns (in progress, paused)
+
+The second stage (v29) is validated on match g with training inputs from first-stage models that
+saw g (stacking leak), and it sees one gap pattern per match. `tools/clean_stage1.py` retrains the
+first stage (GBM + GRU + players-only vote, combined as v25) without each PAIR of DFL matches (21)
+and without each single match (7, for the deployed model), and predicts every target on 3 gap
+patterns (test_seed + 0, 1, 2). Cached per call in `data/cache/dfl/s1_<excluded>_<target>_<v>.npz`
+(hand codes in `hand_<g>_<v>.npy`); a rerun only builds what is missing.
+`tools/tune_refine.py --stage1 {lomo, clean, clean3}` trains the second stage on those inputs
+(the held-out match's own inputs stay the v25 ones, so the numbers compare with v29's).
+
+**Paused 2026-10-27 02:35** at 138 of 147 input files (all 21 pairs done; singles done for some
+matches, the remaining 3 singles missing; all cached files verified readable). See "Resume here".
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
@@ -1534,6 +1548,27 @@ only our match after our own changes to it), but both are tracked and worked fro
 - Hand-built versions all land between 0.68 and 0.71 on Metrica. The next gain has to come from
   learning.
 - `pipeline/`, `tools/` and this journal are **not committed yet**.
+
+## Resume here (paused 2026-10-27 02:35)
+
+State: **v29 is the submission** (public 0.697 / 0.882, DFL 0.571). **v30 candidate** = v29 +
+add-only dead-ball head (public 0.697 / 0.897, DFL 0.612, +0.041 7/7; full D 48.8%, 230 poss at
+the edge of plausible): waiting on the user's decision whether to submit it.
+
+1. Finish the leak-free first-stage build (~20 min, only the missing files):
+   `python tools/clean_stage1.py`  (ends with an aggregate accuracy line, pair vs single)
+2. Second stage, leak-free, compare with v29's configuration (`--tag b2`, 5 seeds: grid mean
+   +0.0085, alpha 0.5 / switch 20 = 0.571; nested 0.571):
+   `python tools/tune_refine.py --bin 2 --seeds 5 --stage1 clean --tag b2s5c1`   (~40 min: how
+   much the leak inflated v29's gain)
+   `python tools/tune_refine.py --bin 2 --seeds 5 --stage1 clean3 --tag b2s5c3`  (~70 min: the
+   candidate, 3 gap patterns)
+3. If clean3 wins: `--ours 0.5 20 --tag v31` (deployed models use the single-exclusion inputs),
+   public check with `tools/transfer_check.py`, rebuild identity, then put the dead-ball head
+   (`tools/eval_dead_refine.py`, its team probabilities now come from refine_b2 / refine_v29:
+   update TEAM_TAG and the model names) on top, and ask the user which becomes the submission.
+4. Dead-ball follow-ups: train the dead head on the clean3 inputs too; try add-only with a cap
+   on the added D (full D <= ~45%).
 
 ## Next steps
 

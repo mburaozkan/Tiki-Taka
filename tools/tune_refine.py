@@ -3,6 +3,7 @@
     python tools/tune_refine.py --bin 5 --tag b5                     # the v28 configuration
     python tools/tune_refine.py --bin 1 --conv 2 --tag b1c2          # full 25 fps
     python tools/tune_refine.py --bin 1 --conv 2 --hidden 128 --crop-s 240 --tag ...
+    python tools/tune_refine.py --bin 2 --seeds 5 --stage1 clean3 --tag b2s5c3   # leak-free, 3 gap patterns
 
 Leave one DFL match out as tools/eval_refine.py, but each fold is trained with --seeds seeds and
 the held-out P(home) averaged over them (cached per seed in data/cache/dfl/refine_<tag>.npz, so a
@@ -54,6 +55,11 @@ def main():
     parser.add_argument("--players", type=int, default=0,
                         help="per-player inputs: the K players per team nearest the ball")
     parser.add_argument("--crop-s", type=float, default=120.0)
+    parser.add_argument("--stage1", choices=("lomo", "clean", "clean3"), default="lomo",
+                        help="second-stage training inputs: lomo = eval_mbr.v25_inputs (leaks the "
+                             "held-out match through the first stage); clean = first stage trained "
+                             "without the held-out match too (tools/clean_stage1.py); clean3 = clean "
+                             "on 3 gap patterns per match")
     parser.add_argument("--steps", type=int, default=1500)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--tag", required=True)
@@ -86,7 +92,7 @@ def main():
     if args.ours:
         ours(ex, args, *args.ours)
         return
-    probs = {}
+    probs, clean_ex = {}, {}
     if os.path.isfile(cache):
         with np.load(cache) as c:
             probs = {k: c[k] for k in c.files}
@@ -96,8 +102,14 @@ def main():
             if key in probs:
                 continue
             t0 = time.time()
-            bundle = refine.train([e for o in dd.GAMES if o != g for e in ex[o]], steps=args.steps,
-                                  seed=seed, log=lambda *_: None)
+            if args.stage1 == "lomo":
+                train_ex = [e for o in dd.GAMES if o != g for e in ex[o]]
+            else:
+                if g not in clean_ex:
+                    clean_ex.clear()
+                    clean_ex[g] = clean_examples([o for o in dd.GAMES if o != g], args, g)
+                train_ex = clean_ex[g]
+            bundle = refine.train(train_ex, steps=args.steps, seed=seed, log=lambda *_: None)
             pp = (ex[g][0][3], ex[g][1][3]) if args.players else (None, None)
             probs[key] = refine.predict(bundle, ex[g][0][0], ex[g][1][0], len(data[g][0]), *pp)
             np.savez(cache, **probs)
@@ -146,6 +158,29 @@ def main():
                   false / (longf / dd.FPS / 3600.0)), flush=True)
 
 
+def clean_examples(games, args, held=None):
+    """Second-stage training examples from tools/clean_stage1.py: the first stage for each match
+    trained without it and without `held` (None: without it only), on 1 or 3 gap patterns."""
+    import clean_stage1 as cs
+    out = []
+    for o in games:
+        d = dd.load(o)
+        cols = idt.player_cols_cached(o, d)
+        excluded = (o,) if held is None else (o, held)
+        for v in (cs.VERSIONS if args.stage1 == "clean3" else (0,)):
+            lab, hand, prob = cs.inputs(o, excluded, v)
+            f = match_features(o, test_seed(o) + v)
+            p1 = stage1(prob, f)
+            for flip in (False, True):
+                e = (refine.inputs(p1, hand, f, cols, flip),) + refine.targets(lab, flip)
+                if args.players:
+                    ball = dd.prepare_ball(d, test_seed(o) + v)
+                    e += (refine.player_inputs(d["players"], d["team"], ball, d["period"],
+                                               dd.PITCH, flip=flip),)
+                out.append(e)
+    return out
+
+
 def ours(ex, args, alpha, sw):
     """The seed ensemble trained on all 7 DFL matches, on top of v27 on our match."""
     from games import GAME, GAMES, half_video_blocks
@@ -160,8 +195,9 @@ def ours(ex, args, alpha, sw):
         if os.path.isfile(path):
             bundles.append(refine.load(path))
         else:
-            b = refine.train([e for g in dd.GAMES for e in ex[g]], steps=args.steps, seed=seed,
-                             log=lambda *_: None)
+            train_ex = ([e for g in dd.GAMES for e in ex[g]] if args.stage1 == "lomo"
+                        else clean_examples(dd.GAMES, args))
+            b = refine.train(train_ex, steps=args.steps, seed=seed, log=lambda *_: None)
             refine.save(b, path)
             bundles.append(refine.load(path))      # predict exactly as a rebuild will
     with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob.npz")) as c:
