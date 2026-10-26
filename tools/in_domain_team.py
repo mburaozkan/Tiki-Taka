@@ -188,8 +188,10 @@ def dfl_validation():
             sum(x > y + 1e-9 for x, y in zip(s, ref))), flush=True)
 
 
-def ours(weights):
-    """v21 plus the in-domain vote on our match: evaluation/results/v24_w<w>.csv."""
+def ours(weights, source="strong"):
+    """v21 plus the in-domain vote on our match: evaluation/results/v24_w<w>.csv (source
+    "strong"), or v25_w<w>.csv (source "dfl+decoded": players-only model trained on all 7 DFL
+    matches' true live frames plus our own strong and decoded pseudo-labels)."""
     from games import GAME, GAMES, half_video_blocks
     from atd_cache import load_arrays
     from pipeline.features import build_features
@@ -211,8 +213,22 @@ def ours(weights):
     atd = load_arrays()
     from pipeline.features import LENGTH, WIDTH
     cols = player_columns(atd["players"], atd["team"], groups, (LENGTH, WIDTH))
-    p_po = predict_po(train_po(cols, team, conf & (groups > 0)), cols)
     graded = groups > 0
+    if source == "strong":
+        p_po = predict_po(train_po(cols, team, conf & graded), cols)
+        stem = "v24"
+    else:
+        dec = learned.decode_hybrid(hand, prob, blks, 10.0)
+        dteam, dmask = decoded_pseudo(dec, prob)
+        merged = np.where(conf, team, dteam)
+        sets = [(cols, merged, (conf | dmask) & graded)]
+        for g in dd.GAMES:
+            lab = dd.load(g)["controlled"]
+            sets.append((player_cols_cached(g, dd.load(g)), lab, np.isin(lab, (H, A))))
+        print("ours: decoded pseudo-labels {:.1f}% of graded frames".format(
+            100 * dmask[graded].mean()))
+        p_po = predict_po(train_po_multi(sets), cols)
+        stem = "v25"
     print("ours: pseudo-labelled {:.1f}% of graded frames, weak {:.1f}%; players-only agrees "
           "with v21's team on {:.1f}% of v21's live weak frames".format(
               100 * conf[graded].mean(), 100 * weak[graded].mean(),
@@ -221,21 +237,146 @@ def ours(weights):
                                 graded & weak & np.isin(hand, (H, A))])))
     for w in weights:
         codes = learned.decode_hybrid(hand, combine(prob, p_po, weak, w), blks, 10.0)
-        path = write_submission(os.path.join(RESULTS_DIR, "v24_w{:g}.csv".format(w)), codes)
+        path = write_submission(os.path.join(RESULTS_DIR, "{}_w{:g}.csv".format(stem, w)), codes)
         reason = pm.validate_submission(pm.read_label_csv(path), GAMES[GAME]["n_video_frames"])
-        print("  v24_w{:g} -> {} ({})".format(w, os.path.relpath(path, ROOT), reason or "valid"))
+        print("  {}_w{:g} -> {} ({})".format(stem, w, os.path.relpath(path, ROOT),
+                                          reason or "valid"))
+
+
+DECODED_MARGIN_S = 2.0    # decoded pseudo-labels: this far from any decoded change of team
+DECODED_MIN_P = 0.8       # and the base model's P(team | live) at least this
+VAR_W = (0.25, 0.5)
+
+
+def decoded_pseudo(codes, prob):
+    """(team, mask): frames of the decoded hybrid path that sit inside a stable stretch of one
+    team (>= DECODED_MARGIN_S from any decoded change) where the base model is confident."""
+    live = np.isin(codes, (H, A))
+    k = int(DECODED_MARGIN_S * dd.FPS)
+    change = np.zeros(len(codes), bool)
+    idx = np.flatnonzero(codes[1:] != codes[:-1]) + 1
+    for i in idx:
+        change[max(0, i - k):i + k] = True
+    ph = prob[:, H] / np.maximum(prob[:, H] + prob[:, A], 1e-9)
+    sure = np.where(codes == H, ph, 1 - ph) >= DECODED_MIN_P
+    return codes.copy(), live & ~change & sure
+
+
+def train_po_multi(sets, seed=0):
+    """train_po over several (cols, team, mask) sets."""
+    import lightgbm as lgb
+    xs, ys = [], []
+    for cols, team, mask in sets:
+        idx = np.flatnonzero(mask)[::STEP]
+        xs += [po_matrix(cols)[idx], po_matrix(cols, True)[idx]]
+        ys += [(team[idx] == H), (team[idx] == A)]
+    params = {"objective": "binary", "learning_rate": 0.05, "num_leaves": 31,
+              "min_data_in_leaf": 200, "feature_fraction": 0.8, "bagging_fraction": 0.8,
+              "bagging_freq": 1, "lambda_l2": 1.0, "seed": seed, "verbose": -1}
+    return lgb.train(params, lgb.Dataset(np.concatenate(xs), np.concatenate(ys).astype(np.float64)),
+                     num_boost_round=300)
+
+
+def player_cols_cached(g, d):
+    path = os.path.join(dd.CACHE, "po_cols_{}.npz".format(g))
+    if os.path.isfile(path):
+        with np.load(path) as c:
+            return {k: c[k] for k in c.files}
+    cols = player_columns(d["players"], d["team"], d["period"], dd.PITCH)
+    np.savez(path, **{k: v.astype(np.float32) for k, v in cols.items()})
+    return cols
+
+
+def variants():
+    """Pseudo-label sources x gates x weights on DFL, each match treated as unlabelled."""
+    base = {}
+    with np.load(PROBS) as c:
+        for k in c.files:
+            name, g = k.split("__")
+            base.setdefault(name, {})[g] = c[k]
+    base["blend"] = {g: (base["gbm"][g] + base["gru"][g]) / 2 for g in dd.GAMES}
+    bases = (("gbm", 20.0), ("blend", 10.0), ("blend", 20.0))
+    info = {}
+    print("preparing ...", flush=True)
+    for g in dd.GAMES:
+        d = dd.load(g)
+        f = match_features(g, test_seed(g))
+        lab, blk = d["controlled"], blocks(d["period"])
+        sc = emissions(f, PARAMS)
+        hand = np.full(len(lab), X, dtype=np.int8)
+        for a, b in blk:
+            hand[a:b] = decode_block(sc, f, PARAMS, a, b)
+        team, conf, weak = pseudo_labels(f, hand)
+        dec = learned.decode_hybrid(hand, base["gbm"][g], blk, 20.0)
+        dteam, dmask = decoded_pseudo(dec, base["gbm"][g])
+        info[g] = dict(lab=lab, blk=blk, hand=hand, team=team, conf=conf, weak=weak,
+                       dteam=dteam, dmask=dmask, cols=player_cols_cached(g, d))
+        live = np.isin(lab, (H, A))
+        print("{} decoded pseudo: {:.1f}% of graded, right {:.1f}% | strong pseudo {:.1f}%".format(
+            g, 100 * dmask[lab != X].mean(), 100 * np.mean(dteam[dmask & live] == lab[dmask & live]),
+            100 * conf[lab != X].mean()), flush=True)
+
+    res, acc = {}, {}
+    for g in dd.GAMES:
+        I = info[g]
+        others = [(info[o]["cols"], info[o]["lab"], np.isin(info[o]["lab"], (H, A)))
+                  for o in dd.GAMES if o != g]
+        merged_team = np.where(I["conf"], I["team"], I["dteam"])
+        sources = {
+            "strong": [(I["cols"], I["team"], I["conf"])],
+            "decoded": [(I["cols"], merged_team, I["conf"] | I["dmask"])],
+            "dfl": others,
+            "dfl+decoded": others + [(I["cols"], merged_team, I["conf"] | I["dmask"])],
+        }
+        live = np.isin(I["lab"], (H, A))
+        wl = I["weak"] & live
+        for src, sets in sources.items():
+            p_po = predict_po(train_po_multi(sets), I["cols"])
+            acc.setdefault(src, []).append(np.mean((p_po[wl] >= 0.5) == (I["lab"][wl] == H)))
+            for name, sw in bases:
+                b = base[name][g]
+                ph = b[:, H] / np.maximum(b[:, H] + b[:, A], 1e-9)
+                gates = {"weak": I["weak"].astype(np.float64), "unsure": 1 - np.abs(2 * ph - 1)}
+                ref = pm.evaluate(I["lab"], learned.decode_hybrid(I["hand"], b, I["blk"], sw),
+                                  bootstrap_n=0)["spell_f1_mean"]
+                res.setdefault((name, sw, "-", "-", 0), []).append(ref) if src == "strong" else None
+                for gate, gv in gates.items():
+                    for w in VAR_W:
+                        pred = learned.decode_hybrid(I["hand"], combine(b, p_po, gv, w), I["blk"], sw)
+                        r = pm.evaluate(I["lab"], pred, bootstrap_n=0)["spell_f1_mean"]
+                        res.setdefault((name, sw, src, gate, w), []).append(r)
+        print("done", g, flush=True)
+
+    print("\nplayers-only accuracy on weak live frames (mean of 7): " + "  ".join(
+        "{} {:.1f}%".format(k, 100 * np.mean(v)) for k, v in acc.items()))
+    print("\nbase  switch  source       gate     w     per match | mean | delta | won/lost")
+    for key, s in res.items():
+        name, sw, src, gate, w = key
+        ref = res[(name, sw, "-", "-", 0)]
+        won = sum(x > y + 1e-9 for x, y in zip(s, ref))
+        lost = sum(x < y - 1e-9 for x, y in zip(s, ref))
+        print("{:<6}{:>4g}   {:<12} {:<7} {:<5} {} | {:.3f} | {:+.3f} | {}/{}".format(
+            name, sw, src, gate, w, " ".join("{:.3f}".format(x) for x in s), np.mean(s),
+            np.mean(s) - np.mean(ref), won, lost), flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ours", action="store_true")
     parser.add_argument("--skip-dfl", action="store_true")
+    parser.add_argument("--source", choices=("strong", "dfl+decoded"), default="strong",
+                        help="--ours: pseudo-label source of the players-only model")
+    parser.add_argument("--variants", action="store_true",
+                        help="pseudo-label sources x gates x weights on DFL (variants())")
     args = parser.parse_args()
+    if args.variants:
+        variants()
+        return
     if not args.skip_dfl:
         dfl_validation()
     if args.ours:
         sys.path.insert(0, os.path.join(ROOT, "pipeline"))
-        ours(WEIGHTS)
+        ours(WEIGHTS, args.source)
 
 
 if __name__ == '__main__':

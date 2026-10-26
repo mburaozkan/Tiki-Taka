@@ -1227,6 +1227,41 @@ hybrid's team stage on **weak** frames (ball not seen, or nobody within 2 m, or 
 - Kept as the candidate (`v24_w0.25`); variants to strengthen it are running (pseudo-labels from
   the decoded path, DFL-trained players-only model, a gate by base-model uncertainty).
 
+**Variants** (`in_domain_team.py --variants`; DFL, each match treated as unlabelled):
+- Pseudo-label sources for the players-only model: *strong* (as above); *decoded* (strong plus
+  frames of the decoded hybrid path ≥ 2 s from any decoded change with the base model ≥ 0.8 sure:
+  23–37% of graded frames, right 94–99%); *dfl* (the other 6 DFL matches' true live frames);
+  *dfl+decoded* (both).
+- Players-only accuracy on weak live frames: strong 81.1%, decoded 83.9%, dfl 83.8%,
+  dfl+decoded 85.5%.
+- Gates: *weak* (as above) or *unsure* (weight 1 − |2 P(H) − 1| of the base model).
+
+| source, gate weak | GBM sw 20, w 0.25 / 0.5 | blend sw 10, w 0.25 / 0.5 | blend sw 20, w 0.25 / 0.5 |
+|---|---|---|---|
+| strong | +0.005 (4/3) / −0.001 | +0.004 (4/3) / −0.004 | +0.008 (4/3) / +0.008 (3/4) |
+| decoded | +0.005 (4/3) / +0.006 (3/4) | +0.008 (7/0) / +0.005 (3/4) | +0.009 (4/3) / +0.008 (5/2) |
+| dfl | +0.009 (5/1) / +0.008 (5/2) | +0.008 (5/2) / +0.008 (5/2) | +0.004 (4/3) / +0.012 (6/1) |
+| **dfl+decoded** | **+0.010 (6/1) / +0.011 (5/1)** | **+0.009 (6/1) / +0.010 (5/2)** | +0.007 (4/3) / +0.010 (5/2) |
+
+(wins / losses against no vote; base means 0.547 / 0.541 / 0.542; the unsure gate is equal or
+worse throughout.) **dfl+decoded with the weak gate wins under every base at ≥ 5/7**, which
+makes it unlikely to be a lucky pick among the 48 variants.
+
+**On our match (v25 = v21 + this vote, blend switch 10 as in v21):** decoded pseudo-labels
+cover 34% of graded frames; the players-only model agrees with v21's team on 81.5% of v21's live
+weak frames.
+
+| version | poss | direct | D | home | public spF1 / mF1 | DFL (blend sw 10) |
+|---|---|---|---|---|---|---|
+| v21 | 261 | 40% | 37.3% | 57.9% | 0.658 / 0.877 | 0.541 |
+| v25_w0.25 | 259 | 39% | 37.3% | 59.9% | 0.671 / 0.880 | 0.550 (6/7) |
+| **v25_w0.5** | **264** | 40% | 37.3% | 60.4% | **0.684 / 0.881** | **0.551 (5/7)** |
+| v25_w1 | 268 | 41% | 37.3% | 60.2% | 0.684 / 0.883 | not run |
+
+- **v25_w0.5 passes the rule** (+0.010 on DFL, 5/7) and is better on the public window
+  (0.684 vs 0.658), with plausible full-match counts. It is the new candidate on both references.
+  Rebuild: `python tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded`.
+
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
 ±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%
@@ -1240,7 +1275,7 @@ only our match after our own changes to it), but both are tracked and worked fro
 | reference | best | score | the other reference |
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | v24_w1 (v21 + in-domain vote, w 1) | 0.690 / 0.878 | DFL 0.536–0.540 (below no vote) |
-| realistic DFL (7 matches, folds won) | v24_w0.25 (w 0.25) | 0.552 (4/7) | public 0.684 / 0.879 |
+| realistic DFL (7 matches, folds won) | v25_w0.5 (v21 + players-only vote, DFL + decoded pseudo-labels) | 0.551 vs 0.541 (5/7, passes) | public 0.684 / 0.881 |
 | submitted file | v21 | public 0.658 / 0.877 | DFL 0.547 (same setting) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
