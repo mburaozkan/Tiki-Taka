@@ -1421,6 +1421,8 @@ a rebuild is byte-identical): team differs from v27 on 4.2% of live frames.
 | v28 (5 fps, 1 model, sw 10) | 275 | 9.0 s | 42% | 37.4% | 56.1% | 0.684 / 0.881 | 0.567 |
 | **v29** | **249** | 10.8 s | 38% | 37.4% | 57.5% | **0.697 / 0.882** | **0.571** |
 
+- **Adopted as the submission.** The full rebuild chain (v25 inputs, then v29) gives a
+  byte-identical file.
 - **v29 is the best version on both references**: public 0.697 (previous best v24_w1 0.690, which
   loses on DFL) and DFL 0.571. Full-match counts stay inside the plausible ranges (249
   possessions, 38% direct, D 37.4%).
@@ -1439,7 +1441,7 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | **v29** (v27 + second-stage network, 12.5 fps, 5 seeds) | 0.697 / 0.882 | DFL 0.571 |
 | realistic DFL (7 matches, folds won) | **v29** | 0.571 vs 0.560 (6/7, passes) | public 0.697 / 0.882 |
-| **submitted file (since 2026-10-26)** | **v27** (= v27_4: v25 + touch-margin vote + restart handover) | public 0.684 / 0.881 | DFL 0.560 (v25 0.551, v21 0.541) |
+| **submitted file (since 2026-10-26, evening)** | **v29** (v27 + second-stage bidirectional team network) | public 0.697 / 0.882 | DFL 0.571 (v27 0.560, v25 0.551, v21 0.541) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
   filtered to controlled possession, our gap pattern cut in. v19 scores 0.567 / 0.833 there.
@@ -1448,7 +1450,12 @@ only our match after our own changes to it), but both are tracked and worked fro
   (absent in stoppages, sitting on the carrier), so models trained on it misread our dead balls.
   Learned models beat the hand model on Metrica (0.822 vs 0.793), but transfer badly to our match
   (v16: public 0.49 / 0.67).
-- **The submission is v27** (2026-10-26): v25 plus the touch-margin vote and the restart
+- **The submission is v29** (2026-10-26): v27's pipeline plus the second-stage bidirectional
+  team network (12.5 fps, 5 seeds, alpha 0.5, switch 20). Rebuild, from a clean state:
+  `python tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded --weights 0.5`, then
+  `python tools/tune_refine.py --bin 2 --seeds 5 --tag v29 --ours 0.5 20` (models in `models/`:
+  gbm_dfl, gru_dfl, touch_net_all, po_team_v25, refine_v29_s0..4). The full chain gives a
+  byte-identical file. Before it, **v27**: v25 plus the touch-margin vote and the restart
   handover. Rebuild: `python tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded
   --weights 0.5`, then `python tools/eval_fixes.py --skip-dfl --ours "A max_s=3 slow_ms=2 + D
   w=0.5 vote_s=2" --name v27` (byte-identical on rebuild). Before it, v25_w0.5:
