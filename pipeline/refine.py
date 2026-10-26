@@ -5,7 +5,8 @@ team log-odds plus the team-reaction features, over long context (experiment 6, 
 
 We label offline, so the network may read the future: teams reorganise 1-8 s after a turnover,
 and the second stage can move a change of possession to where that reaction says it happened.
-Per frame inputs (inputs()), averaged over BIN frames (5 fps), home/away symmetric (flip swaps the
+Per frame inputs (inputs()), averaged over BIN frames (BIN 5: 5 fps; BIN 1: the full 25 fps, with
+CONV convolution layers in front of the GRU for the fine timing), home/away symmetric (flip swaps the
 team columns and negates the signed ones):
   z            first-stage log-odds of home vs away (clipped), and whether the hand path is live
   ball         seen, gap length, nearest home / away distance (capped)
@@ -22,7 +23,8 @@ import numpy as np
 BIN = 5
 HIDDEN = 64
 LAYERS = 2
-CROP = 600              # bins per training stretch (2 min)
+CONV = 0                # 5-tap conv layers (dilation 1, 2, 4, ...) before the GRU
+CROP_S = 120.0          # seconds per training stretch
 BATCH = 16
 STEPS = 1500
 LR = 2e-3
@@ -74,19 +76,33 @@ def targets(lab, flip=False):
     return y, home | away
 
 
-def _net(n_in):
+def config():
+    return {"BIN": BIN, "HIDDEN": HIDDEN, "LAYERS": LAYERS, "CONV": CONV}
+
+
+def _net(n_in, cfg=None):
     import torch.nn as nn
+    cfg = cfg or config()
+    hidden, layers, conv = cfg["HIDDEN"], cfg["LAYERS"], cfg["CONV"]
 
     class Refiner(nn.Module):
         def __init__(self):
             super().__init__()
-            self.inp = nn.Linear(n_in, HIDDEN)
-            self.gru = nn.GRU(HIDDEN, HIDDEN, num_layers=LAYERS, batch_first=True,
+            self.inp = nn.Linear(n_in, hidden)
+            self.convs = nn.ModuleList([nn.Conv1d(hidden, hidden, 5, padding=2 * 2 ** i,
+                                                  dilation=2 ** i) for i in range(conv)])
+            self.gru = nn.GRU(hidden, hidden, num_layers=layers, batch_first=True,
                               bidirectional=True, dropout=0.1)
-            self.out = nn.Linear(2 * HIDDEN, 1)
+            self.out = nn.Linear(2 * hidden, 1)
 
         def forward(self, x):
-            h, _ = self.gru(self.inp(x).relu())
+            h = self.inp(x).relu()
+            if len(self.convs):
+                c = h.transpose(1, 2)
+                for layer in self.convs:
+                    c = c + layer(c).relu()
+                h = c.transpose(1, 2)
+            h, _ = self.gru(h)
             return self.out(h).squeeze(-1)
     return Refiner()
 
@@ -103,6 +119,7 @@ def train(examples, steps=STEPS, seed=SEED, log=print):
     data = [((x - mean) / std, y, v.astype(np.float32)) for x, y, v in examples]
     lengths = np.array([len(y) for _, y, _ in data], dtype=np.float64)
     model = _net(len(mean)).to(dev)
+    model.cfg = config()
     opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=LR, total_steps=steps)
     total = 0.0
@@ -112,10 +129,11 @@ def train(examples, steps=STEPS, seed=SEED, log=print):
         for _ in range(BATCH):
             i = int(rng.choice(len(data), p=lengths / lengths.sum()))
             x, y, v = data[i]
-            a = int(rng.integers(0, max(1, len(y) - CROP)))
-            xb.append(x[a:a + CROP])
-            yb.append(y[a:a + CROP])
-            mb.append(v[a:a + CROP])
+            crop = int(CROP_S * 25 / BIN)
+            a = int(rng.integers(0, max(1, len(y) - crop)))
+            xb.append(x[a:a + crop])
+            yb.append(y[a:a + crop])
+            mb.append(v[a:a + crop])
         xb = torch.tensor(np.stack(xb), device=dev)
         yb = torch.tensor(np.stack(yb), device=dev)
         mb = torch.tensor(np.stack(mb), device=dev)
@@ -135,15 +153,18 @@ def train(examples, steps=STEPS, seed=SEED, log=print):
 def save(bundle, path):
     import torch
     model, mean, std = bundle
-    torch.save({"state": model.state_dict(), "mean": mean, "std": std}, path)
+    torch.save({"state": model.state_dict(), "mean": mean, "std": std,
+                "cfg": getattr(model, "cfg", config())}, path)
 
 
 def load(path):
     import torch
     saved = torch.load(path, weights_only=False)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    model = _net(len(saved["mean"])).to(dev)
+    cfg = saved.get("cfg", {"BIN": 5, "HIDDEN": 64, "LAYERS": 2, "CONV": 0})
+    model = _net(len(saved["mean"]), cfg).to(dev)
     model.load_state_dict(saved["state"])
+    model.cfg = cfg
     return model, saved["mean"], saved["std"]
 
 
@@ -157,7 +178,7 @@ def predict(bundle, x_plain, x_flip, n_frames):
         p = torch.sigmoid(model(torch.tensor((x_plain - mean) / std, device=dev)[None]))[0]
         q = torch.sigmoid(model(torch.tensor((x_flip - mean) / std, device=dev)[None]))[0]
     pb = (p.cpu().numpy() + 1.0 - q.cpu().numpy()) / 2.0
-    out = np.repeat(pb, BIN)
+    out = np.repeat(pb, getattr(model, "cfg", config())["BIN"])
     if len(out) < n_frames:
         out = np.concatenate([out, np.full(n_frames - len(out), out[-1] if len(out) else 0.5)])
     return out[:n_frames]
