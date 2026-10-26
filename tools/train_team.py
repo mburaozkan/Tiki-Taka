@@ -9,7 +9,8 @@ trained for that question alone:
            P(home touch), P(away touch) from the touch network trained WITHOUT this match
   target   the team in controlled possession, on live frames only (stoppages stay with the hand
            model, as in the hybrid decoder)
-  context  dilations up to 64, about +/- 5 s
+  context  dilations up to 64: one 5-tap conv per block, so about +/- 10 s (2 x 127 frames);
+           --context 20 adds dilation 128 (about +/- 20 s)
 DFL prepared like ours (dfl_data.prepare_ball); VERSIONS gap patterns per training match, each also
 with the teams swapped. Reports per-frame team accuracy on the held-out matches, then the hybrid
 decoder (hand D vs live from pipeline.decode, team from this network) against the touch-network
@@ -50,9 +51,9 @@ def short_found(lab, pred, blk):
     return rec[0][0] / max(rec[0][1], 1)
 
 
-def team_inputs(d, ball, touch_model, flip=False):
+def team_inputs(d, ball, touch_model, flip=False, path=tn.PATH_FEATURES):
     """touch_net inputs plus the touch network's two probabilities (swapped when flipped)."""
-    x = tn.inputs(d["players"], ball, d["team"], dd.PITCH, flip=flip)
+    x = tn.inputs(d["players"], ball, d["team"], dd.PITCH, flip=flip, path=path)
     p = tn.predict(touch_model, tn.inputs(d["players"], ball, d["team"], dd.PITCH,
                                           path=len(touch_model[1]) > tn.n_base_inputs()))
     tp = p[:, [2, 1]] if flip else p[:, 1:]
@@ -92,8 +93,15 @@ def main():
     parser.add_argument("--weighting", choices=("none", "possession"), default="none",
                         help="possession: every true possession weighs the same, plus extra "
                              "weight near changes (possession_weights)")
+    parser.add_argument("--context", type=int, choices=(10, 20), default=10,
+                        help="10: dilations up to 64 (+/- 10 s); 20: adds 128 (+/- 20 s)")
+    parser.add_argument("--path", action="store_true",
+                        help="ball-path inputs on (as in the 2026-10-25 team network)")
     args = parser.parse_args()
-    tag = "" if args.weighting == "none" else "_w"
+    global DILATIONS
+    if args.context == 20:
+        DILATIONS = DILATIONS + (128,)
+    tag = ("" if args.weighting == "none" else "_w") + ("" if args.context == 10 else "_c20")
     tms = {g: tn.load(os.path.join(MODEL_DIR, "touch_net_{}.pt".format(g))) for g in dd.GAMES}
     print("building inputs ...", flush=True)
     train_sets, test = {}, {}
@@ -106,9 +114,9 @@ def main():
                       else np.ones(len(d["controlled"]), dtype=np.float32))
             for flip in (False, True):
                 y, valid = team_targets(d["controlled"], flip)
-                sets.append((team_inputs(d, ball, tms[g], flip), y, valid, weight))
+                sets.append((team_inputs(d, ball, tms[g], flip, args.path), y, valid, weight))
         train_sets[g] = sets
-        test[g] = team_inputs(d, dd.prepare_ball(d, seed=test_seed(g)), tms[g])
+        test[g] = team_inputs(d, dd.prepare_ball(d, seed=test_seed(g)), tms[g], path=args.path)
 
     probs, acc = {}, []
     for held in dd.GAMES:
@@ -147,7 +155,7 @@ def main():
         r = pm.evaluate(lab, pred, bootstrap_n=0)
         base.append((r["spell_f1_mean"], r["macro_f1"], short_found(lab, pred, blk)))
     print(line.format("hand + touch network", *np.mean(base, axis=0)))
-    for sw in HYBRID_SWITCH:
+    for sw in HYBRID_SWITCH + (30.0, 45.0, 60.0):
         res = []
         for g in dd.GAMES:
             lab, blk = data[g]

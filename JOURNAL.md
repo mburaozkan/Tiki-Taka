@@ -1192,6 +1192,40 @@ weighting fails because the domains are too easy to tell apart (effective sample
 stoppage detection still does not transfer, so it cannot replace the hand D path. **v21 stays.**
 (1.15 and 1.35 were not run: 1.25 and the combination already show the ceiling of this route.)
 
+### 2026-10-26: in-domain team model (pseudo-labels from the match itself)
+
+`tools/in_domain_team.py`. Pseudo-labels: ball seen, nearest player within 2 m and ≥ 1.5 m closer
+than the nearest opponent, co-movement not disagreeing, hand path live; label = that player's
+team. A **players-only** LightGBM (no ball input: per-team spread, centroid, push toward goal,
+back line, compactness and their future-minus-past changes from `pipeline/reaction.py`, plus
+pressure and mean speed, each with past / future means up to ±10 s) is trained on one match's own
+pseudo-labels, home/away swapped as augmentation. Its log-odds are added (weight w) to the
+hybrid's team stage on **weak** frames (ball not seen, or nobody within 2 m, or margin < 1.5 m).
+
+**DFL validation, each match treated as unlabelled** (true labels only for scoring):
+- Pseudo-labels cover 15–24% of graded frames and are right 91–95% of the time.
+- Weak frames are 63–71% of live play. There the players-only model is right 79–83%; the base
+  learned GBM is right 76–89%, so the players-only model is worse in 6 of 7 matches (better only
+  in the hardest one, J03WN1).
+
+| base | switch | w 0 | w 0.25 | w 0.5 | w 1 |
+|---|---|---|---|---|---|
+| GBM | 10 | 0.540 | 0.544 (3/7) | 0.542 (2/7) | 0.522 (1/7) |
+| GBM | 20 | 0.547 | **0.552 (4/7)** | 0.546 (3/7) | 0.536 (2/7) |
+| blend | 10 | 0.541 | 0.546 (4/7) | 0.537 (2/7) | 0.522 (1/7) |
+| blend | 20 | 0.542 | **0.549 (4/7)** | 0.549 (3/7) | 0.540 (3/7) |
+
+- Best +0.005 to +0.007 at w 0.25, **4/7 folds: below the 5/7 rule, so not accepted.** Most of
+  the gain comes from J03WN1 (+0.02 to +0.05), the match where the base model is weakest.
+- Our match (v21 + vote, `v24_w<w>.csv`): pseudo-labels cover 21% of graded frames, weak frames
+  75%; the players-only model agrees with v21's team on 79% of v21's live weak frames. w 0
+  rebuilds v21 exactly. w 0.25: 271 possessions (261), 41% direct, D unchanged, public 0.684 /
+  0.879 (v21 0.658). The public window rose, but it is a check only.
+- Reading: without the ball, team shape and pressure give about 80% on hard frames, the same
+  level the ball-based model already reaches there, so the vote mostly adds noise. It helps only
+  where the base model is poor.
+
+## Current situation
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
