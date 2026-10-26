@@ -1181,6 +1181,19 @@ window true D called live, true live called D (all / ball seen), spellF1 / macro
 
 ## Next steps
 
+**Queue (2026-10-26), judged on realistic DFL, leave one match out, ≥ 5/7 folds:**
+1. ATD channel check: done, negative.
+2. Pace shift: (a) quantile normalisation rejected; (b) time-warped DFL and (c) domain weighting
+   running.
+3. In-domain team model: pseudo-labels from our own match, players only, ±10 s.
+4. MBR decoding: calibrated P(H/A/D), FFBS samples, the candidate with the best expected spellF1.
+5. Hand fixes from C: restart handover, N/A throw-in team, aerial balls, touch margin.
+6. **Future team reaction (user's idea):** teams reorganise 1–8 s after a turnover, so an offline
+   labeller can use the future. Per-team spread, centroid, push toward goal, back-line height,
+   compactness, and future-minus-past differences (k = 2, 4, 6 s). Step 1: hand `shape_shift`
+   (H/A split only). Step 2: inputs to the team network / GBM / GRU, context ±10 s. Also report
+   turnover timing and the false-switch rate inside long possessions.
+
 **A. Out-of-match validation: done for Metrica (2026-10-24).** Remaining: DFL open data as a
 second provider, and the `--gt` option on spell_table / boundary_diag for external matches.
 1. Load the Metrica sample data (3 games, tracking + events) with kloppy. Build H/A/D labels from
