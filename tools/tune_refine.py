@@ -55,6 +55,9 @@ def main():
     parser.add_argument("--steps", type=int, default=1500)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--tag", required=True)
+    parser.add_argument("--ours", nargs=2, type=float, metavar=("ALPHA", "SWITCH"),
+                        help="train --seeds models on all 7 (models/refine_<tag>_s<seed>.pt), write "
+                             "evaluation/results/<tag>.csv on our match, and stop")
     args = parser.parse_args()
     refine.BIN, refine.HIDDEN, refine.LAYERS, refine.CONV = args.bin, args.hidden, args.layers, args.conv
     refine.CROP_S = args.crop_s
@@ -72,6 +75,9 @@ def main():
         ex[g] = [(refine.inputs(p1, hand, f, cols, flip),) + refine.targets(lab, flip)
                  for flip in (False, True)]
 
+    if args.ours:
+        ours(ex, args, *args.ours)
+        return
     probs = {}
     if os.path.isfile(cache):
         with np.load(cache) as c:
@@ -129,6 +135,48 @@ def main():
                   int(np.sum(nested < ref - 1e-9)), best[0], best[1], res[best].mean(),
                   100.0 * len(offs) / max(n_true, 1), 100.0 * np.mean(np.abs(offs) <= 1),
                   false / (longf / dd.FPS / 3600.0)), flush=True)
+
+
+def ours(ex, args, alpha, sw):
+    """The seed ensemble trained on all 7 DFL matches, on top of v27 on our match."""
+    from games import GAME, GAMES, half_video_blocks
+    from atd_cache import load_arrays
+    from pipeline.features import build_features, LENGTH, WIDTH
+    from pipeline import touch_net
+    from pipeline.run import write_submission, RESULTS_DIR
+    from report import brief_line, PUBLIC_GT
+    bundles = []
+    for seed in range(args.seeds):
+        path = os.path.join(ROOT, "models", "refine_{}_s{}.pt".format(args.tag, seed))
+        if os.path.isfile(path):
+            bundles.append(refine.load(path))
+        else:
+            b = refine.train([e for g in dd.GAMES for e in ex[g]], steps=args.steps, seed=seed,
+                             log=lambda *_: None)
+            refine.save(b, path)
+            bundles.append(refine.load(path))      # predict exactly as a rebuild will
+    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob.npz")) as c:
+        hand, prob = c["hand"], c["prob"]
+    f = build_features(events=[], touch_model=touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH)))
+    blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]
+    groups = np.zeros(len(hand), dtype=np.int8)
+    for i, (a, b) in enumerate(blk, start=1):
+        groups[a:b] = i
+    atd = load_arrays()
+    cols = idt.player_columns(atd["players"], atd["team"], groups, (LENGTH, WIDTH))
+    p1 = stage1(prob, f)
+    xs = (refine.inputs(p1, hand, f, cols), refine.inputs(p1, hand, f, cols, True))
+    p = np.mean([refine.predict(b, xs[0], xs[1], len(hand)) for b in bundles], axis=0)
+    codes = decode(hand, p1, p, f, blk, alpha, sw)
+    v27 = decode(hand, p1, np.full(len(hand), 0.5), f, blk, 0.0, 10.0)
+    out = write_submission(os.path.join(RESULTS_DIR, args.tag + ".csv"), codes)
+    reason = pm.validate_submission(pm.read_label_csv(out), GAMES[GAME]["n_video_frames"])
+    live = np.isin(hand, (0, 1)) & (groups > 0)
+    gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
+    print("{} (alpha {:g}, switch {:g}, {} seeds) -> {} ({}); team differs from v27 on {:.1f}% of "
+          "live frames".format(args.tag, alpha, sw, len(bundles), os.path.relpath(out, ROOT),
+                               reason or "valid", 100 * np.mean(codes[live] != v27[live])))
+    print("  " + brief_line(args.tag, codes, gt))
 
 
 if __name__ == '__main__':

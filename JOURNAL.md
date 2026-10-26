@@ -1403,7 +1403,27 @@ centre (cuDNN rejects a 200k-step sequence); at 5 fps this gives exactly the sam
 - **12.5 fps is the sweet spot**: finer than 5 fps without making the GRU carry 25 fps sequences;
   every setting beats v27 in at least 6 of 7 matches. Bigger or deeper networks, longer stretches
   and longer training do not help (7 training matches are enough for the small network).
-- Next: 12.5 fps with 5 seeds, 8.3 fps, 12.5 fps with one conv layer; then the winner on our match.
+- Last round: 12.5 fps with 5 seeds: mean +0.0085, nested 0.571 (+0.010, 6/1); 8.3 fps (bin 3):
+  +0.0082, 12 of 12 at ≥ 6/7, nested 0.569 (7/0); 12.5 fps + 1 conv layer: +0.0070. All within noise
+  of each other. In every configuration switch 20 beats switch 10 (alpha 0.5–0.75: +0.010 to
+  +0.011). Check: **v27 alone at switch 20 is worse** (0.5575; 15: 0.5587; 30: 0.5565; 10: 0.5601),
+  so the gain is the second stage's, which lets the decoder use a stricter switch.
+- **Chosen: 12.5 fps, 5-seed ensemble, alpha 0.5, switch 20** (the middle of the best region):
+  DFL **0.571 (+0.011, 6/1)** vs v27 0.560.
+
+**v29 on our match** (`python tools/tune_refine.py --bin 2 --seeds 5 --tag v29 --ours 0.5 20` after
+the v25 build; 5 models `models/refine_v29_s0..4.pt`, 0.5 MB each, trained on all 7 DFL matches;
+a rebuild is byte-identical): team differs from v27 on 4.2% of live frames.
+
+| version | poss | median | direct | D | home | public spF1 / mF1 | DFL |
+|---|---|---|---|---|---|---|---|
+| v27 | 266 | 9.3 s | 40% | 37.4% | 60.1% | 0.684 / 0.880 | 0.560 |
+| v28 (5 fps, 1 model, sw 10) | 275 | 9.0 s | 42% | 37.4% | 56.1% | 0.684 / 0.881 | 0.567 |
+| **v29** | **249** | 10.8 s | 38% | 37.4% | 57.5% | **0.697 / 0.882** | **0.571** |
+
+- **v29 is the best version on both references**: public 0.697 (previous best v24_w1 0.690, which
+  loses on DFL) and DFL 0.571. Full-match counts stay inside the plausible ranges (249
+  possessions, 38% direct, D 37.4%).
 
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
@@ -1417,8 +1437,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 
 | reference | best | score | the other reference |
 |---|---|---|---|
-| public spellF1 (5 min, 17 possessions) | v24_w1 (v21 + in-domain vote, w 1) | 0.690 / 0.878 | DFL 0.536–0.540 (below no vote) |
-| realistic DFL (7 matches, folds won) | v27_4 (v25 + touch-margin vote + restart handover) | 0.560 vs 0.551 (5/7, passes) | public 0.684 / 0.881 |
+| public spellF1 (5 min, 17 possessions) | **v29** (v27 + second-stage network, 12.5 fps, 5 seeds) | 0.697 / 0.882 | DFL 0.571 |
+| realistic DFL (7 matches, folds won) | **v29** | 0.571 vs 0.560 (6/7, passes) | public 0.697 / 0.882 |
 | **submitted file (since 2026-10-26)** | **v27** (= v27_4: v25 + touch-margin vote + restart handover) | public 0.684 / 0.881 | DFL 0.560 (v25 0.551, v21 0.541) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
