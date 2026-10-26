@@ -15,6 +15,11 @@ team columns and negates the signed ones):
                and their 2 / 4 / 6 s future-minus-past changes; pressure and mean speed
 Target: the true team on live bins. Output: P(home) per frame (bins repeated), to be decoded by
 learned.decode_hybrid like any team probabilities.
+
+Dead-ball head (dead_inputs / dead_targets / decode_dead): the same network on the same inputs
+(optionally + the first stage's P(dead)) trained to say whether the ball is dead; predict(...,
+symmetric=True). decode_dead re-decides D vs live with a two-state Viterbi over beta x its log-odds
++ gamma for agreeing with the hand path, and `cost` per change.
 """
 
 import numpy as np
@@ -78,6 +83,56 @@ def targets(lab, flip=False):
     away = np.all(b == 1, axis=1)
     y = (away if flip else home).astype(np.float32)
     return y, home | away
+
+
+def dead_inputs(prob, hand, f, cols, flip=False, use_pd=True, floor=1e-4):
+    """inputs() + (use_pd) the first stage's log-odds of dead vs live."""
+    x = inputs(prob, hand, f, cols, flip, floor)
+    if not use_pd:
+        return x
+    pd = np.clip(prob[:, 2], floor, 1.0)
+    z = np.clip(np.log(pd / np.clip(prob[:, 0] + prob[:, 1], floor, 1.0)), -Z_CLIP, Z_CLIP)
+    n = len(z) // BIN * BIN
+    zb = z[:n].reshape(-1, BIN).mean(axis=1).astype(np.float32)
+    return np.concatenate([x, zb[:, None]], axis=1)
+
+
+def dead_targets(lab, flip=False):
+    """(y, valid) per bin: 1 = dead, on bins whose frames are all dead or all live."""
+    n = len(lab) // BIN * BIN
+    b = lab[:n].reshape(-1, BIN)
+    dead = np.all(b == 2, axis=1)
+    live = np.all((b == 0) | (b == 1), axis=1)
+    return dead.astype(np.float32), dead | live
+
+
+def decode_dead(hand, p_dead, blocks, beta, gamma, cost, step=5, floor=1e-4):
+    """Hand-like codes (H for live, D, X outside blocks) from a two-state live / dead Viterbi per
+    block on `step`-frame bins: dead scores beta * logit(p_dead) + gamma (hand D) or - gamma (hand
+    live), live 0, `cost` per change (in frames' units: scores are summed over each bin)."""
+    out = np.full(len(hand), 3, dtype=np.int8)
+    q = np.clip(p_dead, floor, 1 - floor)
+    sc = beta * np.log(q / (1 - q)) + gamma * np.where(hand == 2, 1.0, -1.0)
+    for a, b in blocks:
+        n = (b - a + step - 1) // step
+        seg = np.zeros(n * step)
+        seg[:b - a] = sc[a:b]
+        e = seg.reshape(n, step).sum(axis=1).tolist()
+        # two-state Viterbi, state 1 = dead
+        t0, t1 = 0.0, e[0]
+        back = bytearray(n)
+        for i in range(1, n):
+            prev0 = 0 if t0 >= t1 - cost else 1          # best predecessor of live
+            prev1 = 1 if t1 >= t0 - cost else 0          # best predecessor of dead
+            back[i] = prev0 | (prev1 << 1)
+            t0, t1 = (t0 if prev0 == 0 else t1 - cost), (t1 if prev1 == 1 else t0 - cost) + e[i]
+        path = np.empty(n, dtype=np.int8)
+        st = 1 if t1 > t0 else 0
+        for i in range(n - 1, -1, -1):
+            path[i] = st
+            st = (back[i] >> st) & 1
+        out[a:b] = np.where(np.repeat(path, step)[:b - a] == 1, 2, 0)
+    return out
 
 
 def _hold(v):
@@ -262,9 +317,10 @@ def load(path):
     return model, saved["mean"], saved["std"]
 
 
-def predict(bundle, x_plain, x_flip, n_frames, p_plain=None, p_flip=None):
+def predict(bundle, x_plain, x_flip, n_frames, p_plain=None, p_flip=None, symmetric=False):
     """(n_frames,) P(home), averaged with the flipped prediction, bins repeated to frames.
-    p_plain / p_flip: player_inputs() for a model trained with them."""
+    p_plain / p_flip: player_inputs() for a model trained with them. symmetric: the target does
+    not swap with the teams (the dead-ball head)."""
     import torch
     model, mean, std = bundle
     dev = next(model.parameters()).device
@@ -287,7 +343,8 @@ def predict(bundle, x_plain, x_flip, n_frames, p_plain=None, p_flip=None):
                 out[a:keep_hi] = p[a - lo:keep_hi - lo]
         return out
 
-    pb = (run(x_plain, p_plain) + 1.0 - run(x_flip, p_flip)) / 2.0
+    other = run(x_flip, p_flip)
+    pb = (run(x_plain, p_plain) + (other if symmetric else 1.0 - other)) / 2.0
     out = np.repeat(pb, getattr(model, "cfg", config())["BIN"])
     if len(out) < n_frames:
         out = np.concatenate([out, np.full(n_frames - len(out), out[-1] if len(out) else 0.5)])

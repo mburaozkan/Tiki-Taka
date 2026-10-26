@@ -1453,6 +1453,43 @@ configuration (12.5 fps, 5 seeds, leave one match out, 12 alpha × switch settin
   (reaction features) already carry what it can use. Code kept, off by default (`PLAYERS = 0`);
   v29 is unchanged.
 
+### 2026-10-27: the dead-ball side; second-stage dead-ball head
+
+**Where v29 loses on DFL** (`tools/eval_dead.py`, aggregate): true D called live 13.0%, true live
+called D 12.7%; 92% of stoppages >= 2 s are found, but the called restart is late (median end
++1.3 s; within 1 s 33%, within 3 s 62%). Bounds: v29 0.571; **D vs live from the labels 0.698**;
+team from the labels 0.748. On the public window v29 never calls live frames D but calls 24.6%
+of true D live (`tools/transfer_check.py`).
+
+**Dead-ball head** (`refine.dead_inputs / dead_targets / decode_dead`, `tools/eval_dead_refine.py`):
+the v29 second-stage network (12.5 fps, 3 seeds) trained to say whether the ball is dead, with
+(d1) or without (d1n, `--no-pd`) the first stage's P(dead). `decode_dead`: two-state live/dead
+Viterbi over beta x its log-odds + gamma for agreeing with the hand path, cost per change
+(verified equal to the 3-state Viterbi); then the team as v29 (alpha 0.5, switch 20, handover).
+Grid beta (0.5, 1) x gamma (0, 0.5, 1, 2) x cost (10, 25, 50, 100); v29 = 0.571.
+
+| mode | DFL nested | grid | public spF1 / mF1 | pub D>live | full D | poss |
+|---|---|---|---|---|---|---|
+| v29 | 0.571 | | 0.697 / 0.882 | 24.6% | 37.4% | 249 |
+| free, d1 | 0.657 (+0.086, 7/0) | +0.071 to +0.089, all 7/0 | 0.618–0.630 | 53–56% | 41% | 254–266 |
+| free, d1n | 0.650 (+0.079, 7/0) | +0.055 to +0.080, all 7/0 | 0.637–0.658 | 45–62% | 44% | 238–240 |
+| near (only within 3 s of a hand D edge), d1 | 0.606 (+0.035) | all 7/0 | 0.675 / 0.851 | 34.9% | 34.9% | 249 |
+| near, d1n | 0.597 (+0.027) | all 7/0 | 0.675 / 0.858 | 32.7% | 36.2% | 242 |
+| add (hand D kept, head may only add D), d1 | 0.615 (+0.045) | all 7/0 | 0.675 / 0.916 | 12.1% | 48.9% | 239 |
+| **add, d1n (0.5, 0.5, 25)** | **0.612 (+0.041, 7/0)**; setting 0.611 | +0.032 to +0.041, all 7/0 | **0.697 / 0.897** | 19.3% | 48.8% | 230 |
+
+- Per-bin dead vs live on DFL: head 97.3% (d1) / 96.4% (d1n), hand 87.3%, first stage 97.1%.
+  The free head rewrites 15–20% of our match's D vs live and removes real stoppages on the
+  public window: the same domain gap as the learned D call (2026-10-24). Rejected.
+- **Add-only without the first stage's P(dead) is the first dead-ball change that does not hurt
+  the public window**: spellF1 unchanged (0.697), macroF1 0.882 -> 0.897, public D>live 24.6% ->
+  19.3%, live>D still 0%. Milder settings (gamma 1–2) give the same public number with D 47–48%.
+  Caveats: full-match D 48.8% and 230 possessions sit at the edge of the plausible ranges (37–50%,
+  ~230–300); direct share 33% (v29 38%).
+- Candidate **v30 = v30_d1n_add** (`python tools/eval_dead_refine.py --tag d1n --no-pd --mode add
+  --ours 0.5 0.5 25` after the v25 and v29 builds; `models/dead_d1n_s0..2.pt`); rebuild
+  byte-identical (5e4e5839…). Not yet the submission.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
