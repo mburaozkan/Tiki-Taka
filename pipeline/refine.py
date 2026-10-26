@@ -30,6 +30,7 @@ SEED = 0
 Z_CLIP = 8.0
 REACTION = ("spread", "cx", "push", "back", "compact")
 DIFFS = ("", "_d2", "_d4", "_d6")
+USE_REACTION = True     # False: the ablation without the team-reaction inputs
 
 
 def _team_cols(cols, side):
@@ -52,7 +53,8 @@ def inputs(prob, hand, f, cols, flip=False, floor=1e-4):
     ta = np.asarray(f["touch_p_away"], np.float64)
     touch = np.asarray(f["touch"], np.float64)
     last = np.asarray(f["last_touch"], np.float64)
-    home, away = _team_cols(cols, "home"), _team_cols(cols, "away")
+    home, away = ((_team_cols(cols, "home"), _team_cols(cols, "away")) if USE_REACTION
+                  else ([], []))
     sign = -1.0 if flip else 1.0
     if flip:
         dh, da, th, ta, home, away = da, dh, ta, th, away, home
@@ -128,6 +130,21 @@ def train(examples, steps=STEPS, seed=SEED, log=print):
             log("  step {}  loss {:.4f}".format(step + 1, total / 500))
             total = 0.0
     return model, mean, std
+
+
+def save(bundle, path):
+    import torch
+    model, mean, std = bundle
+    torch.save({"state": model.state_dict(), "mean": mean, "std": std}, path)
+
+
+def load(path):
+    import torch
+    saved = torch.load(path, weights_only=False)
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    model = _net(len(saved["mean"])).to(dev)
+    model.load_state_dict(saved["state"])
+    return model, saved["mean"], saved["std"]
 
 
 def predict(bundle, x_plain, x_flip, n_frames):

@@ -1342,6 +1342,30 @@ within 1 s; 44.6 false switches per hour inside true possessions ≥ 10 s):
   that already reads touches, co-movement, the players-only vote and the touch-margin vote.
   Step 3 (the second-stage network, which can combine it with everything else) is running.
 
+### 2026-10-26: step 3, the second-stage bidirectional team model (user's idea)
+
+`pipeline/refine.py`, `tools/eval_refine.py`. A 2-layer bidirectional GRU (hidden 64) at 5 fps over
+2-minute stretches. Inputs per step: v27's first-stage team log-odds, the hand path's live flag,
+ball seen / gap / nearest distances, touch probabilities and touch sides, and per team every
+reaction feature (spread, centroid, push, back line, compactness, each with its 2 / 4 / 6 s
+change) plus pressure and pace: 54 inputs. Target: the true team on live bins; home/away flip as
+augmentation. Leave one DFL match out. Caveat: the training matches' first-stage probabilities
+come from models that saw the held-out match (mild stacking leak).
+- Per-frame team accuracy on live frames: first stage 89.5%, refined 89.7%.
+
+| decoder (then v27's restart handover) | DFL | vs v27 | folds | turnovers found / within 1 s | false / h in long |
+|---|---|---|---|---|---|
+| v27 | 0.560 | | | 54% / 65% | 44.6 |
+| refined alone, switch 10 / 20 / 30 | 0.552 / 0.548 / 0.543 | −0.009 to −0.017 | ≤ 2/7 | 45–50% / 66–67% | 41.5–47.2 |
+| **v27 log-odds + 0.5 × refined** | **0.567** | **+0.007** | **6/7** | 53% / 66% | 44.3 |
+| v27 log-odds + 1 × refined | 0.566 | +0.006 | 5/7 | 54% / 66% | 44.3 |
+
+- **The blend passes the rule (+0.007, 6/7)**; alone, the second stage is worse. Gains in
+  J03WMX, J03WN1 and J03WR9 (+0.012 to +0.024), the rest within ±0.009.
+- Running: the ablation without the reaction inputs (is the gain from the team reaction or from a
+  second bidirectional pass?), and v28 on our match (refiner trained on all 7,
+  `models/refine_v28.pt`).
+
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
 ±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%

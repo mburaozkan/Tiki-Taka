@@ -42,6 +42,18 @@ def stage1(prob, f):
 
 
 def main():
+    import argparse
+    global PROBS
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--no-reaction", action="store_true",
+                        help="ablation: the refiner without the team-reaction inputs")
+    parser.add_argument("--ours", type=float, metavar="ALPHA",
+                        help="train on all 7, save models/refine_v28.pt, write v28.csv (blend alpha)")
+    parser.add_argument("--skip-dfl", action="store_true")
+    args = parser.parse_args()
+    if args.no_reaction:
+        refine.USE_REACTION = False
+        PROBS = PROBS.replace(".npz", "_noreact.npz")
     data = v25_inputs()
     ctx, ex = {}, {}
     for g in dd.GAMES:
@@ -57,6 +69,10 @@ def main():
             ex[g].append((refine.inputs(p1, hand, f, cols, flip), y, v))
         print("inputs", g, ex[g][0][0].shape, flush=True)
 
+    if args.ours is not None:
+        ours(ex, args.ours)
+    if args.skip_dfl:
+        return
     refined = {}
     if os.path.isfile(PROBS):
         with np.load(PROBS) as c:
@@ -122,6 +138,46 @@ def main():
             codes = learned.decode_hybrid(data[g][1], pr, blk, 10.0)
             preds[g] = fixes.restart_handover(codes, f, max_s=3.0, slow_ms=2.0)
         show("blend alpha {:g}".format(alpha), preds)
+
+
+def ours(ex, alpha):
+    """Refiner trained on all 7 DFL matches, on top of v27 on our match -> v28.csv."""
+    from games import GAME, GAMES, half_video_blocks
+    from atd_cache import load_arrays
+    from pipeline.features import build_features, LENGTH, WIDTH
+    from pipeline import touch_net
+    from pipeline.run import write_submission, RESULTS_DIR
+    from report import brief_line, PUBLIC_GT
+    path = os.path.join(ROOT, "models", "refine_v28.pt")
+    if os.path.isfile(path):
+        bundle = refine.load(path)
+    else:
+        bundle = refine.train([e for g in dd.GAMES for e in ex[g]], log=lambda *_: None)
+        refine.save(bundle, path)
+    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob.npz")) as c:
+        hand, prob = c["hand"], c["prob"]
+    f = build_features(events=[], touch_model=touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH)))
+    blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]
+    groups = np.zeros(len(hand), dtype=np.int8)
+    for i, (a, b) in enumerate(blk, start=1):
+        groups[a:b] = i
+    atd = load_arrays()
+    cols = idt.player_columns(atd["players"], atd["team"], groups, (LENGTH, WIDTH))
+    p1 = stage1(prob, f)
+    p = refine.predict(bundle, refine.inputs(p1, hand, f, cols), refine.inputs(p1, hand, f, cols, True),
+                       len(hand))
+    q = np.clip(p, 1e-4, 1 - 1e-4)
+    codes = learned.decode_hybrid(hand, fixes.add_vote(p1, alpha * np.log(q / (1 - q)), 1.0), blk, 10.0)
+    codes = fixes.restart_handover(codes, f, max_s=3.0, slow_ms=2.0)
+    v27 = learned.decode_hybrid(hand, p1, blk, 10.0)
+    v27 = fixes.restart_handover(v27, f, max_s=3.0, slow_ms=2.0)
+    out = write_submission(os.path.join(RESULTS_DIR, "v28.csv"), codes)
+    reason = pm.validate_submission(pm.read_label_csv(out), GAMES[GAME]["n_video_frames"])
+    gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
+    live = np.isin(hand, (0, 1)) & (groups > 0)
+    print("v28 (alpha {:g}) -> {} ({}); team differs from v27 on {:.1f}% of live frames".format(
+        alpha, os.path.relpath(out, ROOT), reason or "valid", 100 * np.mean(codes[live] != v27[live])))
+    print("  " + brief_line("v28", codes, gt))
 
 
 if __name__ == '__main__':
