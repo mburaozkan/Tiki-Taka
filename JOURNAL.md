@@ -1262,6 +1262,33 @@ weak frames.
   (0.684 vs 0.658), with plausible full-match counts. It is the new candidate on both references.
   Rebuild: `python tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded`.
 
+### 2026-10-26: MBR decoding of the team stage (experiment 4)
+
+`pipeline/mbr.py`, `tools/eval_mbr.py`. The hand path fixes D vs live (as in v25); inside each
+live stretch, 200 team paths are sampled from a two-state HMM over the v25 team probabilities
+(emissions scaled by a temperature tau, change cost "sample switch", forward filtering / backward
+sampling, seed 0). Candidates: the v25 decoder at switch 5 / 10 / 15 / 20 / 30 plus 20 of the
+samples; per half, the one with the best mean spellF1 against all samples is kept. A fast
+spellF1 (`mbr.spell_f1`) matches the official scorer exactly (200 random cases, max difference 0).
+
+DFL with the v25 pipeline held out (reference: v25 decoder, switch 10: **0.551**):
+
+| tau | sample switch 5 | 10 | 20 |
+|---|---|---|---|
+| 0.02 | 0.545 (2/5) | 0.464 | 0.378 |
+| 0.05 | 0.551 (3/4) | 0.507 | 0.457 |
+| 0.1 | 0.552 (4/3) | 0.530 | 0.500 |
+| 0.2 | 0.551 (1/0) | 0.545 (2/5) | 0.526 |
+
+- Nested (setting chosen on the other six matches): **0.548, −0.003, 2 won / 4 lost. Rejected.**
+- Where MBR picks a Viterbi candidate, it is only choosing the switch cost per half (no gain).
+  Where it picks a sample, the score drops by up to 0.17: a single sample carries the posterior's
+  noise, and the samples agree with each other more than with the truth. The sampled posterior is
+  not calibrated well enough for expected-spellF1 choices; with these probabilities Viterbi at a
+  fixed switch is already as good as this gets.
+- On our match, the best setting (tau 0.1, switch 5 → picks switch 20 / 15) is `v26.csv`: 250
+  possessions (v25 264), public 0.684 / 0.881, the same as v25 (the public window does not change).
+
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
 ±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%
@@ -1309,8 +1336,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 1. ATD channel check: done, negative.
 2. Pace shift: done, rejected ((a) quantile normalisation, (b) time warp, (c) domain weighting:
    none makes learned stoppage detection transfer).
-3. In-domain team model: pseudo-labels from our own match, players only, ±10 s.
-4. MBR decoding: calibrated P(H/A/D), FFBS samples, the candidate with the best expected spellF1.
+3. In-domain team model: done, accepted as v25 (players-only vote, DFL + decoded pseudo-labels).
+4. MBR decoding: done, rejected (nested −0.003 on DFL).
 5. Hand fixes from C: restart handover, N/A throw-in team, aerial balls, touch margin.
 6. **Last: future team reaction (user's idea):** teams reorganise 1–8 s after a turnover, so an offline
    labeller can use the future. Per-team spread, centroid, push toward goal, back-line height,
