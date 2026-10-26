@@ -1224,6 +1224,13 @@ hybrid's team stage on **weak** frames (ball not seen, or nobody within 2 m, or 
 - Reading: without the ball, team shape and pressure give about 80% on hard frames, the same
   level the ball-based model already reaches there, so the vote mostly adds noise. It helps only
   where the base model is poor.
+- Kept as the candidate (`v24_w0.25`); variants to strengthen it are running (pseudo-labels from
+  the decoded path, DFL-trained players-only model, a gate by base-model uncertainty).
+
+**Team network context.** Correction: the existing team network already sees about ±10 s (one
+5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
+±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%
+(±10 s: 87.9%), hybrid best 0.537 at switch 45 (±10 s: 0.543). **No gain; rejected.**
 
 ## Current situation
 ## Current situation
