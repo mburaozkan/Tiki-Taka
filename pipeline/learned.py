@@ -25,6 +25,40 @@ FAR = 30.0                       # a missing distance reads as this far (m)
 DECODER = {"switch": 6.0, "to_dead": 6.0, "from_dead": 4.0}   # log-prob units
 
 
+QNORM_KEYS = ("player_speed", "ball_speed")       # ranked alone
+QNORM_POOLED = (("touch_p_home", "touch_p_away"),)  # ranked on their joint distribution
+
+
+def _ranks(x, groups):
+    """x mapped to its empirical CDF (0-1) within each group; NaN stays NaN."""
+    out = np.full(len(x), np.nan)
+    for g in np.unique(groups):
+        idx = np.flatnonzero((groups == g) & ~np.isnan(x))
+        if len(idx) > 1:
+            order = np.argsort(x[idx], kind="stable")
+            r = np.empty(len(idx))
+            r[order] = np.arange(len(idx)) / (len(idx) - 1.0)
+            out[idx] = r
+    return out
+
+
+def qnormalise(f, groups):
+    """Copy of f with pace, ball speed and the touch probabilities replaced by their within-group
+    quantiles (groups: one id per frame, e.g. the half), and the touch timers marked for ranking in
+    matrix(). Removes level shifts between matches (our live play is slower than DFL's)."""
+    g = dict(f)
+    groups = np.asarray(groups)
+    for k in QNORM_KEYS:
+        g[k] = _ranks(np.asarray(f[k], dtype=np.float64), groups)
+    for a, b in QNORM_POOLED:
+        if a in f and b in f:
+            both = _ranks(np.concatenate([f[a], f[b]]).astype(np.float64),
+                          np.concatenate([groups, groups]))
+            g[a], g[b] = both[:len(groups)], both[len(groups):]
+    g["_qgroup"] = groups
+    return g
+
+
 def flip(f):
     """The same match with home and away swapped."""
     g = dict(f)
@@ -94,6 +128,8 @@ def matrix(f, blocks=None):
     tpa = f.get("touch_p_away", np.zeros(len(dh), np.float32)).astype(np.float64)
     base.update({"tph": tph, "tpa": tpa, "tpdiff": tph - tpa})
     since, until, nside = touch_timing(f["touch"])
+    if "_qgroup" in f:
+        since, until = _ranks(since, f["_qgroup"]), _ranks(until, f["_qgroup"])
     base.update({"t_since": since, "t_until": until, "next_side": nside})
     # Context: past and future means of the signals that move at a change of possession.
     ctx = {"ddiff": np.where(np.isnan(f["d_home"]) | np.isnan(f["d_away"]), np.nan, da - dh),
@@ -124,16 +160,39 @@ def training_rows(f, labels, step=2, blocks=None):
     return np.concatenate(xs), np.concatenate(ys)
 
 
-def train_gbm(rows, rounds=400, seed=0):
-    """LightGBM multiclass on [(X, y), ...]."""
+def domain_classifier(source_mats, target_mat, rounds=200, seed=0):
+    """LightGBM telling target rows (our match) from source rows (DFL), classes balanced."""
+    import lightgbm as lgb
+    xs = np.concatenate(list(source_mats) + [target_mat])
+    n_src = len(xs) - len(target_mat)
+    ys = np.concatenate([np.zeros(n_src), np.ones(len(target_mat))])
+    w = np.where(ys == 1, n_src / float(len(target_mat)), 1.0)
+    params = {"objective": "binary", "learning_rate": 0.05, "num_leaves": 31,
+              "min_data_in_leaf": 500, "feature_fraction": 0.8, "bagging_fraction": 0.5,
+              "bagging_freq": 1, "seed": seed, "verbose": -1}
+    return lgb.train(params, lgb.Dataset(xs, ys, weight=w), num_boost_round=rounds)
+
+
+def domain_weights(clf, xs, clip=(0.1, 10.0)):
+    """Importance weights p(ours) / p(DFL) per row (classes balanced in training), clipped and
+    scaled to mean 1."""
+    p = np.clip(clf.predict(xs), 1e-4, 1 - 1e-4)
+    w = np.clip(p / (1 - p), *clip)
+    return w / w.mean()
+
+
+def train_gbm(rows, rounds=400, seed=0, weight_fn=None):
+    """LightGBM multiclass on [(X, y), ...]; weight_fn(X) gives per-row weights (e.g.
+    domain_weights)."""
     import lightgbm as lgb
     xs = np.concatenate([r[0] for r in rows])
     ys = np.concatenate([r[1] for r in rows])
+    weight = weight_fn(xs) if weight_fn is not None else None
     params = {"objective": "multiclass", "num_class": 3, "learning_rate": 0.05,
               "num_leaves": 63, "min_data_in_leaf": 200, "feature_fraction": 0.8,
               "bagging_fraction": 0.8, "bagging_freq": 1, "lambda_l2": 1.0, "seed": seed,
               "verbose": -1}
-    return lgb.train(params, lgb.Dataset(xs, ys), num_boost_round=rounds)
+    return lgb.train(params, lgb.Dataset(xs, ys, weight=weight), num_boost_round=rounds)
 
 
 def predict_proba(model, f, blocks=None):

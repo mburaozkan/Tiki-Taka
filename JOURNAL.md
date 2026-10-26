@@ -1130,6 +1130,31 @@ need it, so even a smoothed fill has little to win. The alignment is kept
 - **Conclusion: negative.** The uncorrected versions of the GT's ball-dead / owning-team fields
   are not in what we were given; there is nothing to add as a feature or decoder prior.
 
+### 2026-10-26: pace shift, (a) per-half quantile normalisation
+
+Acceptance rule from here on: a change must raise mean spellF1 on realistic DFL (animated dead
+ball, blur, gaps; leave one match out) **and** win in at least 5 of 7 folds.
+
+`learned.qnormalise` (`--qnorm` in `train_learned_dfl.py` and `run_learned.py`): player pace,
+ball speed and the touch probabilities (home and away ranked together) replaced by their
+quantile within the half; the touch timers (time since / until the last touch) ranked in
+`matrix()`. Everything derived from them (context windows) follows.
+
+New tool `tools/transfer_check.py`: per submission, full-match D, possessions, and on the public
+window true D called live, true live called D (all / ball seen), spellF1 / macroF1.
+
+| GBM (animated DFL) | DFL full model | DFL hybrid | ours: full D | public live → D | public D → live | public spF1 |
+|---|---|---|---|---|---|---|
+| plain | 0.633 | 0.547 | 56.6% | 24.6% | 11.2% | 0.263 |
+| quantile-normalised | 0.618 (1/7) | 0.549 (3/7) | 53.2% | 15.9% | 16.2% | 0.389 |
+| v21 (submission) | | 0.579 | 37.3% | 0.0% | 24.6% | 0.658 |
+
+- **Rejected.** It moves the transfer in the right direction (live play called D 24.6% → 15.9%)
+  but nowhere near enough (target: D 37–50%, live called D close to 0), and it costs 0.015 on
+  DFL. The hybrid gain (+0.002) is noise (3/7).
+- Likely reason: a quantile within the half also depends on how much of the half is dead, and our
+  match has more dead time than DFL, so a live frame's pace rank still differs.
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags

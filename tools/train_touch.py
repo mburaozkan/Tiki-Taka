@@ -110,7 +110,14 @@ def main():
     parser.add_argument("--target", choices=("touch", "turnover"), default="touch",
                         help="touches (touch_net_*) or controlled possession changes "
                              "(turnover_net_*)")
+    parser.add_argument("--warp", type=float, default=1.0,
+                        help="time-warp DFL by this factor (dfl_data.set_warp); models go to "
+                             "data/cache/models/warp<k>/")
     args = parser.parse_args()
+    global MODEL_DIR
+    if args.warp != 1.0:
+        dd.set_warp(args.warp)
+        MODEL_DIR = os.path.join(MODEL_DIR, "warp{:g}".format(args.warp))
     stem = "touch_net" if args.target == "touch" else "turnover_net"
     os.makedirs(MODEL_DIR, exist_ok=True)
 

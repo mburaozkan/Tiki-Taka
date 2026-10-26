@@ -342,16 +342,99 @@ def prepare_ball(d, seed, animate=True, blur=True, gaps=True):
     return ball
 
 
+# Time warp (set_warp): every match is resampled onto a clock stretched by WARP, so play runs
+# WARP times slower (our live play is slower than DFL's; JOURNAL.md 2026-10-25). 1.0 = off.
+WARP = 1.0
+
+
+def set_warp(k):
+    """Turn the time warp on for every later load() / touch_labels.load(); returns the suffix
+    that warped caches and model files carry ('' when off)."""
+    global WARP
+    WARP = float(k)
+    return suffix()
+
+
+def suffix():
+    return "" if WARP == 1.0 else "_w{:g}".format(WARP)
+
+
+def _warp_index(period, k):
+    """For a stretched clock: per new frame the (fractional) old frame, the new period array, and
+    the new start frame of each period."""
+    t_all, per_all, starts = [], [], {}
+    pos = 0
+    for p in (1, 2):
+        idx = np.flatnonzero(period == p)
+        if not len(idx):
+            continue
+        n = len(idx)
+        m = int((n - 1) * k) + 1
+        t_all.append(idx[0] + np.arange(m) / k)
+        per_all.append(np.full(m, p, dtype=np.int8))
+        starts[p] = (idx[0], pos)
+        pos += m
+    return np.concatenate(t_all), np.concatenate(per_all), starts
+
+
+def warp_frames(frames, period, k):
+    """Old frame numbers -> frame numbers on the stretched clock."""
+    frames = np.asarray(frames)
+    _, _, starts = _warp_index(period, k)
+    out = frames.astype(np.float64).copy()
+    for p, (old0, new0) in starts.items():
+        n = np.sum(period == p)
+        sel = (frames >= old0) & (frames < old0 + n)
+        out[sel] = new0 + np.round((frames[sel] - old0) * k)
+    return out.astype(np.int64)
+
+
+def warp(d, k):
+    """d resampled onto a clock stretched by k: positions interpolated linearly (NaN where either
+    neighbour is missing), speeds divided by k, labels and events moved to the nearest frame."""
+    t, period, _ = _warp_index(d["period"], k)
+    i0 = np.floor(t).astype(np.int64)
+    i1 = np.minimum(i0 + 1, len(d["period"]) - 1)
+    w = (t - i0).astype(np.float32)
+
+    def lerp(a):
+        wb = w.reshape((-1,) + (1,) * (a.ndim - 1))
+        return ((1 - wb) * a[i0] + wb * a[i1]).astype(a.dtype)
+
+    near = np.round(t).astype(np.int64)
+    near = np.minimum(near, len(d["period"]) - 1)
+    out = dict(d)
+    out["players"] = lerp(d["players"])
+    out["players"][:, :, 2] /= k
+    out["ball"] = lerp(d["ball"])
+    out["period"] = period
+    for key in ("labels", "controlled"):
+        out[key] = d[key][near]
+    ev = d["events"].copy()
+    ev[:, 0] = warp_frames(ev[:, 0], d["period"], k)
+    out["events"] = ev
+    return out
+
+
 def load(game, rebuild=False):
-    """Cached build()."""
+    """Cached build() (time-warped when set_warp is on)."""
     path = os.path.join(CACHE, "{}.npz".format(game))
     if not rebuild and os.path.isfile(path):
         with np.load(path) as c:
-            return {k: c[k] for k in c.files}
-    out = build(game)
-    os.makedirs(CACHE, exist_ok=True)
-    np.savez(path, **out)
-    return out
+            out = {k: c[k] for k in c.files}
+    else:
+        out = build(game)
+        os.makedirs(CACHE, exist_ok=True)
+        np.savez(path, **out)
+    if WARP == 1.0:
+        return out
+    key = (game, WARP)
+    if key not in _WARPED:
+        _WARPED[key] = warp(out, WARP)
+    return _WARPED[key]
+
+
+_WARPED = {}
 
 
 def profile(lab):

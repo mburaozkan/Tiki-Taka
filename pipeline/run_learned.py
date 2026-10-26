@@ -41,7 +41,7 @@ GBM_WEIGHT = 0.5      # blend: P = w * P_gbm + (1 - w) * P_gru
 COSTS = {"switch": 10.0, "to_dead": 25.0, "from_dead": 4.0}
 
 
-def training(source):
+def training(source, qnorm=False):
     """[(features, labels)] for every external training match (and gap pattern)."""
     if source == "metrica":
         import metrica_data as md
@@ -52,8 +52,10 @@ def training(source):
     out = []
     for g in dd.GAMES:
         lab = dd.load(g)["controlled"]
+        period = dd.load(g)["period"]
         for seed in [test_seed(g)] + [test_seed(g) + 1 + v for v in range(TRAIN_VERSIONS)]:
-            out.append((match_features(g, seed), lab))
+            f = match_features(g, seed)
+            out.append((learned.qnormalise(f, period) if qnorm else f, lab))
     return out
 
 
@@ -63,18 +65,23 @@ def model_path(kind, source):
     return repo if os.path.isfile(repo) else os.path.join(CACHE_DIR, name)
 
 
-def models(source, kinds, retrain=False):
+def models(source, kinds, retrain=False, qnorm=False, domain_weight=False):
     """{kind: model} for kind in kinds ("gbm", "gru"), trained on `source`; cached on disk."""
     import torch
     from pipeline.sequence import train_gru, _net
     os.makedirs(CACHE_DIR, exist_ok=True)
     paths = {k: model_path(k, source) for k in kinds}
     if retrain or not all(os.path.isfile(p) for p in paths.values()):
-        train = training(source)
+        train = training(source, qnorm)
         paths = {k: os.path.join(CACHE_DIR, os.path.basename(p)) for k, p in paths.items()}
         if "gbm" in kinds:
             step = 3 if source == "dfl" else 2
-            gbm = learned.train_gbm([learned.training_rows(f, lab, step=step) for f, lab in train])
+            weight_fn = None
+            if domain_weight:
+                from train_learned_dfl import domain_weight_fn
+                weight_fn = domain_weight_fn([f for f, _ in train], qnorm)
+            gbm = learned.train_gbm([learned.training_rows(f, lab, step=step) for f, lab in train],
+                                    weight_fn=weight_fn)
             gbm.save_model(paths["gbm"])
         if "gru" in kinds:
             model, mean, std = train_gru(train, log=lambda *_: None)
@@ -112,17 +119,35 @@ def main():
                              "switch cost (learned.decode_hybrid)")
     parser.add_argument("--exclude", nargs="*", default=[],
                         help="input-column prefixes to leave out (learned.EXCLUDE)")
+    parser.add_argument("--qnorm", action="store_true",
+                        help="per-half quantile normalisation of the inputs (learned.qnormalise); "
+                             "use with its own --model-dir")
+    parser.add_argument("--domain-weight", action="store_true",
+                        help="GBM trained with DFL frames weighted by p(ours)/p(DFL) "
+                             "(train_learned_dfl.domain_weight_fn); use with its own --model-dir")
+    parser.add_argument("--warp", type=float, default=1.0,
+                        help="train on time-warped DFL (dfl_data.set_warp, tools/train_learned_dfl.py "
+                             "--warp); use with its own --model-dir and that warp's --touch-model")
     args = parser.parse_args()
     learned.EXCLUDE.update(args.exclude)
+    if args.warp != 1.0:
+        import dfl_data
+        dfl_data.set_warp(args.warp)
 
     kinds = ("gbm", "gru") if args.model == "blend" else (args.model,)
     if args.model_dir:
         global REPO_DIR, CACHE_DIR
         REPO_DIR = CACHE_DIR = args.model_dir
-    trained = models(args.source, kinds, args.retrain)
+    trained = models(args.source, kinds, args.retrain, args.qnorm, args.domain_weight)
     tm_path = args.touch_model or os.path.join(ROOT, touch_net.MODEL_PATH)
     tm = touch_net.load(tm_path) if args.source == "dfl" else None
     f = build_features(events=[], touch_model=tm)
+    blocks = [(first, last + 1) for _, first, last in half_video_blocks(GAME)]
+    if args.qnorm:
+        groups = np.zeros(len(f["ball_seen"]), dtype=np.int8)
+        for i, (a, b) in enumerate(blocks, start=1):
+            groups[a:b] = i
+        f = learned.qnormalise(f, groups)
     probs = {}
     if "gbm" in trained:
         probs["gbm"] = learned.predict_proba(trained["gbm"], f)
@@ -131,7 +156,6 @@ def main():
     prob = (args.gbm_weight * probs["gbm"] + (1 - args.gbm_weight) * probs["gru"]
             if args.model == "blend" else probs[args.model])
     costs = dict(zip(("switch", "to_dead", "from_dead"), args.costs)) if args.costs else COSTS
-    blocks = [(first, last + 1) for _, first, last in half_video_blocks(GAME)]
     if args.hybrid is not None:
         from pipeline.decode import decode
         hand = decode(build_features(touch_model=tm))          # v20, Smart Tagging included

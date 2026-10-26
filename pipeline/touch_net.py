@@ -45,7 +45,7 @@ SEED = 0
 # confident than DFL, and from 0.9 up too few touches survive there (possessions 237, 208), so 0.7.
 PICK_THRESHOLD = 0.7
 # Ball-path inputs (path_columns): who is on the ball's line ahead, and who gets there first.
-PATH_FEATURES = True
+PATH_FEATURES = False  # no gain (JOURNAL.md 2026-10-25); models with them still load
 PATH_MIN_MS = 2.0
 PATH_AHEAD_M = 25.0
 PATH_NEAR_M = 3.0

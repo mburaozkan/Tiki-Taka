@@ -107,13 +107,21 @@ def merged_touches(d):
 
 
 def load(game, rebuild=False):
-    """Cached merged_touches(): (frames, teams, sources)."""
-    path = os.path.join(dd.CACHE, "{}_touches.npz".format(game))
-    if not rebuild and os.path.isfile(path):
-        with np.load(path) as c:
-            return c["frame"], c["team"], c["source"]
-    f, t, s = merged_touches(dd.load(game))
-    np.savez(path, frame=f, team=t, source=s)
+    """Cached merged_touches(): (frames, teams, sources), moved onto the stretched clock when
+    dfl_data.set_warp is on (the touches always come from the sharp, unwarped ball)."""
+    k, dd.WARP = dd.WARP, 1.0
+    try:
+        path = os.path.join(dd.CACHE, "{}_touches.npz".format(game))
+        if not rebuild and os.path.isfile(path):
+            with np.load(path) as c:
+                f, t, s = c["frame"], c["team"], c["source"]
+        else:
+            f, t, s = merged_touches(dd.load(game))
+            np.savez(path, frame=f, team=t, source=s)
+        if k != 1.0:
+            f = dd.warp_frames(f, dd.load(game)["period"], k)
+    finally:
+        dd.WARP = k
     return f, t, s
 
 

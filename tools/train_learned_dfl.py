@@ -52,7 +52,7 @@ def test_seed(game):
 
 
 def match_features(game, seed, rebuild=False):
-    path = os.path.join(dd.CACHE, "feat_{}_{}_anim.npz".format(game, seed))
+    path = os.path.join(dd.CACHE, "feat_{}_{}_anim{}.npz".format(game, seed, dd.suffix()))
     if not rebuild and os.path.isfile(path):
         with np.load(path) as c:
             return {k: c[k] for k in c.files}
@@ -66,6 +66,32 @@ def match_features(game, seed, rebuild=False):
     features.LENGTH, features.WIDTH = length, width
     np.savez(path, **f)
     return f
+
+
+def our_features(qnorm=False):
+    """Our match's features as the learned model sees them (animated-DFL touch network)."""
+    from games import GAME, half_video_blocks
+    tm = touch_net.load(os.path.join(MODEL_DIR, "anim", "touch_net_all.pt"))
+    f = features.build_features(events=[], touch_model=tm)
+    groups = np.zeros(len(f["ball_seen"]), dtype=np.int8)
+    for i, (_, a, b) in enumerate(half_video_blocks(GAME), start=1):
+        groups[a:b + 1] = i
+    return (learned.qnormalise(f, groups) if qnorm else f), groups
+
+
+def domain_weight_fn(dfl_feats, qnorm=False, step=6):
+    """weight_fn for learned.train_gbm: a classifier ours-vs-DFL on the model inputs (both
+    home/away orientations), DFL rows weighted by p(ours)/p(DFL), clipped."""
+    f, groups = our_features(qnorm)
+    ours = [learned.matrix(g)[0][groups > 0][::step] for g in (f, learned.flip(f))]
+    src = [learned.matrix(g)[0][::step] for fd in dfl_feats for g in (fd, learned.flip(fd))]
+    clf = learned.domain_classifier(src, np.concatenate(ours))
+    w = learned.domain_weights(clf, np.concatenate(src))
+    print("domain weights on DFL rows: median {:.2f}  p10 {:.2f}  p90 {:.2f}  clipped hi {:.1f}%"
+          "  effective n {:.0f}%".format(np.median(w), np.percentile(w, 10), np.percentile(w, 90),
+                                         100 * np.mean(w >= w.max() - 1e-9),
+                                         100 * w.sum() ** 2 / (w ** 2).sum() / len(w)), flush=True)
+    return lambda xs: learned.domain_weights(clf, xs)
 
 
 def blocks(period):
@@ -90,8 +116,24 @@ def main():
     parser.add_argument("--reuse", action="store_true", help="read saved held-out probabilities")
     parser.add_argument("--exclude", nargs="*", default=[],
                         help="input-column prefixes to leave out (learned.EXCLUDE)")
+    parser.add_argument("--qnorm", action="store_true",
+                        help="per-half quantile normalisation of pace, ball speed, touch "
+                             "probabilities and touch timers (learned.qnormalise)")
+    parser.add_argument("--domain-weight", action="store_true",
+                        help="weight DFL training frames by p(ours)/p(DFL) from a classifier on "
+                             "the model inputs (GBM only; learned.domain_weights)")
+    parser.add_argument("--tag", default="", help="suffix for the saved probabilities file")
+    parser.add_argument("--warp", type=float, default=1.0,
+                        help="time-warp DFL (dfl_data.set_warp); touch networks from "
+                             "data/cache/models/warp<k>/ (tools/train_touch.py --warp)")
     args = parser.parse_args()
     learned.EXCLUDE.update(args.exclude)
+    global PROBS, MODEL_DIR
+    if args.warp != 1.0:
+        dd.set_warp(args.warp)
+        MODEL_DIR = os.path.join(MODEL_DIR, "warp{:g}".format(args.warp))
+    if args.tag:
+        PROBS = PROBS.replace(".npz", "_{}.npz".format(args.tag))
 
     print("building features ...", flush=True)
     data = {}
@@ -100,11 +142,15 @@ def main():
         test = match_features(g, test_seed(g), args.rebuild)
         train = [match_features(g, test_seed(g) + 1 + v, args.rebuild)
                  for v in range(TRAIN_VERSIONS)]
+        if args.qnorm:
+            test = learned.qnormalise(test, d["period"])
+            train = [learned.qnormalise(f, d["period"]) for f in train]
         data[g] = (test, train, d["controlled"], blocks(d["period"]))
 
-    # Hand model v20 on the same test features.
+    # Hand model v20 on the same test features (the raw ones: qnormalise changes pace).
     hand, hand_codes = {}, {}
-    for g, (f, _, lab, blk) in data.items():
+    for g, (_, _, lab, blk) in data.items():
+        f = match_features(g, test_seed(g))
         sc = emissions(f, PARAMS)
         pred = np.full(len(lab), X, dtype=np.int8)
         for a, b in blk:
@@ -112,6 +158,9 @@ def main():
         hand[g] = score(lab, pred)
         hand_codes[g] = pred
 
+    weight_fn = None
+    if args.domain_weight:
+        weight_fn = domain_weight_fn([f for g in dd.GAMES for f in data[g][1]], args.qnorm)
     probs = {"gbm": {}, "gru": {}}
     if args.reuse:
         with np.load(PROBS) as c:
@@ -122,7 +171,8 @@ def main():
         print("held out {} ...".format(held), flush=True)
         train = [(f, data[g][2]) for g in dd.GAMES if g != held for f in data[g][1]]
         if args.model in ("gbm", "both"):
-            model = learned.train_gbm([learned.training_rows(f, lab, step=3) for f, lab in train])
+            model = learned.train_gbm([learned.training_rows(f, lab, step=3) for f, lab in train],
+                                      weight_fn=weight_fn)
             probs["gbm"][held] = learned.predict_proba(model, data[held][0])
         if args.model in ("gru", "both"):
             from pipeline.sequence import train_gru, predict_gru
