@@ -1372,6 +1372,23 @@ come from models that saw the held-out match (mild stacking leak).
   possessions (v27 266), 42% direct, D 37.4%, home share 56.1% (v27 60.1%); public 0.684 / 0.882
   (v27 0.684 / 0.881). It passes the rule on DFL and leaves the public window unchanged.
 
+**Tuning the second stage** (`tools/tune_refine.py`: 3 seeds per fold, held-out P(home)
+averaged; v27 log-odds + alpha × refined at alpha 0.25 / 0.5 / 0.75 / 1 and switch 10 / 15 / 20; a
+model trains in about 17 s). Prediction now runs in overlapping 4-minute windows keeping each
+centre (cuDNN rejects a 200k-step sequence); at 5 fps this gives exactly the same scores.
+
+| configuration | per-frame | mean gain over the 12 settings | settings at 6–7/7 | alpha 0.5, switch 10 (v28's) |
+|---|---|---|---|---|
+| **5 fps, hidden 64, 2 layers** | 90.1% | **+0.0077** | 9 of 12 | **+0.0066, 6 won / 0 lost** |
+| 25 fps, 2 conv layers in front | 89.7% | +0.0053 | 4 of 12 | +0.0061, 5/2 |
+
+- **25 fps does not help.** Turnovers within 1 s rise slightly (68% vs 67%), but the GRU carries
+  five times more steps for the same context and the overall gain falls. What the network adds is
+  the slow team reaction, not frame-exact timing.
+- Nested selection of (alpha, switch) is noisy because the grid is flat (ensemble nested +0.0005 to
+  +0.005); every setting of the 5 fps model beats v27, so a fixed setting is the honest choice.
+- Next: around 5 fps, 12.5 / 2.5 fps, hidden 128, 3 layers, 4-minute crops, 3000 steps.
+
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
 ±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%

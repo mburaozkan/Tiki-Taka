@@ -25,6 +25,7 @@ HIDDEN = 64
 LAYERS = 2
 CONV = 0                # 5-tap conv layers (dilation 1, 2, 4, ...) before the GRU
 CROP_S = 120.0          # seconds per training stretch
+PREDICT_S = 240.0       # prediction windows (s); each keeps its centre half, so >= 60 s context
 BATCH = 16
 STEPS = 1500
 LR = 2e-3
@@ -174,10 +175,23 @@ def predict(bundle, x_plain, x_flip, n_frames):
     model, mean, std = bundle
     dev = next(model.parameters()).device
     model.eval()
-    with torch.no_grad():
-        p = torch.sigmoid(model(torch.tensor((x_plain - mean) / std, device=dev)[None]))[0]
-        q = torch.sigmoid(model(torch.tensor((x_flip - mean) / std, device=dev)[None]))[0]
-    pb = (p.cpu().numpy() + 1.0 - q.cpu().numpy()) / 2.0
+    step = int(PREDICT_S * 25 / getattr(model, "cfg", config())["BIN"])
+    pad = step // 4
+
+    def run(x):
+        # overlapping windows (cuDNN rejects very long sequences); keep each window's centre
+        x = (x - mean) / std
+        out = np.empty(len(x), dtype=np.float32)
+        with torch.no_grad():
+            for a in range(0, len(x), step - 2 * pad):
+                lo, hi = max(0, a - pad), min(len(x), a + step - pad)
+                seg = torch.tensor(np.ascontiguousarray(x[lo:hi]), device=dev)[None]
+                p = torch.sigmoid(model(seg))[0].cpu().numpy()
+                keep_hi = min(len(x), a + step - 2 * pad)
+                out[a:keep_hi] = p[a - lo:keep_hi - lo]
+        return out
+
+    pb = (run(x_plain) + 1.0 - run(x_flip)) / 2.0
     out = np.repeat(pb, getattr(model, "cfg", config())["BIN"])
     if len(out) < n_frames:
         out = np.concatenate([out, np.full(n_frames - len(out), out[-1] if len(out) else 0.5)])
