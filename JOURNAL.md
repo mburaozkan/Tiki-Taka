@@ -1155,6 +1155,43 @@ window true D called live, true live called D (all / ball seen), spellF1 / macro
 - Likely reason: a quantile within the half also depends on how much of the half is dead, and our
   match has more dead time than DFL, so a live frame's pace rank still differs.
 
+### 2026-10-26: pace shift, (b) time-warped DFL and (c) domain weighting
+
+**(b) Time warp** (`dfl_data.set_warp`, `--warp` in `train_touch.py`, `train_learned_dfl.py`,
+`run_learned.py`): every DFL half resampled onto a clock stretched 1.25× (positions interpolated,
+speeds / 1.25, labels, events and teacher touches moved to the new clock), then animated, blurred
+and gapped as before. Touch network, features and GBM all retrained on it.
+- One match, as a check: possessions per live minute 6.3 → 5.0 (public window 4.2), median
+  5.3 → 6.6 s, live pace 2.26 → 1.81 m/s.
+- Touch network (7 folds, ±0.5 s, at 0.5): F1 0.67 (unwarped 0.74); slower touches are harder to
+  place.
+- DFL scores on the warped matches (not comparable with the unwarped benchmark; every model
+  drops): hand v20 0.473, full GBM 0.573, hybrid 0.474.
+
+**(c) Domain weighting** (`learned.domain_classifier` / `domain_weights`, `--domain-weight`): a
+GBM tells our frames from DFL's on the model inputs; DFL training rows get p(ours)/p(DFL),
+clipped to 0.1–10, mean 1. The weights are very uneven (median 0.31, p90 2.0, effective sample
+15%): the two domains separate easily.
+- DFL: full GBM 0.627 (plain 0.633, 2/7), hybrid 0.545 (0.547, 2/7).
+
+**Transfer to our match (full learned GBM, `tools/transfer_check.py`):**
+
+| GBM trained on | full D | poss | public live → D | public D → live | public spF1 / mF1 |
+|---|---|---|---|---|---|
+| animated DFL (plain) | 56.6% | 323 | 24.6% | 11.2% | 0.263 / 0.724 |
+| (a) quantile-normalised | 53.2% | 315 | 15.9% | 16.2% | 0.389 / 0.766 |
+| (b) warped 1.25× | 51.9% | 317 | 17.4% | 17.3% | 0.339 / 0.751 |
+| (a) + (b) | 53.2% | 287 | 17.4% | 28.7% | 0.425 / 0.736 |
+| (c) domain-weighted | 58.0% | 352 | 26.0% | 8.8% | 0.270 / 0.706 |
+| v21 (hand D, learned team) | 37.3% | 261 | 0.0% | 24.6% | 0.658 / 0.877 |
+
+**Conclusion: the pace shift is not the whole story; experiment 2 is rejected.** Normalising
+or warping pace each removes about a third of the live play called dead (25% → 16–17%), and
+together they do no better. So the rest of the difference is not a level shift in pace. Domain
+weighting fails because the domains are too easy to tell apart (effective sample 15%). Learned
+stoppage detection still does not transfer, so it cannot replace the hand D path. **v21 stays.**
+(1.15 and 1.35 were not run: 1.25 and the combination already show the ceiling of this route.)
+
 ## Current situation
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
@@ -1183,8 +1220,8 @@ window true D called live, true live called D (all / ball seen), spellF1 / macro
 
 **Queue (2026-10-26), judged on realistic DFL, leave one match out, ≥ 5/7 folds:**
 1. ATD channel check: done, negative.
-2. Pace shift: (a) quantile normalisation rejected; (b) time-warped DFL and (c) domain weighting
-   running.
+2. Pace shift: done, rejected ((a) quantile normalisation, (b) time warp, (c) domain weighting:
+   none makes learned stoppage detection transfer).
 3. In-domain team model: pseudo-labels from our own match, players only, ±10 s.
 4. MBR decoding: calibrated P(H/A/D), FFBS samples, the candidate with the best expected spellF1.
 5. Hand fixes from C: restart handover, N/A throw-in team, aerial balls, touch margin.
