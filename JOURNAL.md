@@ -1289,6 +1289,40 @@ DFL with the v25 pipeline held out (reference: v25 decoder, switch 10: **0.551**
 - On our match, the best setting (tau 0.1, switch 5 → picks switch 20 / 15) is `v26.csv`: 250
   possessions (v25 264), public 0.684 / 0.881, the same as v25 (the public window does not change).
 
+### 2026-10-26: hand fixes on top of v25 (experiment 5)
+
+`pipeline/fixes.py`, `tools/eval_fixes.py`. In the hybrid the hand path gives only D vs live, so
+team fixes enter the team stage as extra log-odds votes (like the players-only vote); the restart
+handover edits the decoded path. DFL, the v25 pipeline held out, reference **0.551**:
+
+| fix | best setting | DFL | folds | note |
+|---|---|---|---|---|
+| A restart handover: a team spell ≤ max_s right after a stoppage, players slower than slow_ms, followed by the other team → D | max_s 3, slow 2 m/s | 0.553 (+0.002) | 5/2 | small; 1.5 m/s does almost nothing |
+| B ball out: vote for the team that did not touch it last, first vote_s of the restart | w 1, 5 s | 0.552 (+0.0005) | 4/2 | premise right only 58.7% of 150 restarts (the last touch before the ball goes out is often missed); w 2 hurts |
+| C aerial landing: fast ball (> 12 m/s) halving its speed near a player → vote for his team 2 s | w 0.5 | 0.551 | 2/5 | worse at every weight |
+| **D touch margin: every network touch votes for its team over vote_s, × min(margin / 1.5 m, 1)** | **w 0.5, 2 s** | **0.559 (+0.0075)** | **5/2** | w 1 / 1 s +0.006 (5/2); w 2 hurts |
+| **A + D** | max_s 3 / slow 2 + w 0.5 / 2 s | **0.560 (+0.009)** | **5/2** | |
+
+On our match (`--ours`, from v25's saved inputs):
+
+| version | poss | direct | D | public spF1 / mF1 | DFL |
+|---|---|---|---|---|---|
+| v25_w0.5 | 264 | 40% | 37.3% | 0.684 / 0.881 | 0.551 |
+| v27_1 = D (w 0.5, 2 s) | 269 | 41% | 37.3% | 0.684 / 0.881 | 0.559 (5/7) |
+| v27_2 = D (w 1, 1 s) | 276 | 42% | 37.3% | 0.655 / 0.881 | 0.557 (5/7) |
+| v27_3 = A | 262 | 40% | 37.4% | 0.684 / 0.881 | 0.553 (5/7) |
+| **v27_4 = A + D** | **266** | 40% | 37.4% | **0.684 / 0.881** | **0.560 (5/7)** |
+
+- **A + D passes the rule** (+0.009, 5/7) and leaves the public window unchanged. The touch-margin
+  vote works where the earlier hand-model version did not (v11: touch margin on the hand path),
+  because here it only nudges the learned team stage, it does not decide switches.
+- Settings were picked from a grid on the same 7 matches (about 20 settings), so the true gain is
+  probably a little smaller; the neighbouring D settings all give +0.005 to +0.0075 at 5/7, so it
+  is not a single lucky setting.
+- B and C rejected. Rebuild of v27_4: `python tools/in_domain_team.py --ours --skip-dfl --source
+  dfl+decoded --weights 0.5`, then `python tools/eval_fixes.py --skip-dfl --ours "A max_s=3
+  slow_ms=2 + D w=0.5 vote_s=2"` (writes `v27_1.csv`).
+
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
 ±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%
@@ -1302,7 +1336,7 @@ only our match after our own changes to it), but both are tracked and worked fro
 | reference | best | score | the other reference |
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | v24_w1 (v21 + in-domain vote, w 1) | 0.690 / 0.878 | DFL 0.536–0.540 (below no vote) |
-| realistic DFL (7 matches, folds won) | v25_w0.5 (v21 + players-only vote, DFL + decoded pseudo-labels) | 0.551 vs 0.541 (5/7, passes) | public 0.684 / 0.881 |
+| realistic DFL (7 matches, folds won) | v27_4 (v25 + touch-margin vote + restart handover) | 0.560 vs 0.551 (5/7, passes) | public 0.684 / 0.881 |
 | **submitted file (since 2026-10-26)** | **v25_w0.5** | public 0.684 / 0.881 | DFL 0.551 (v21 0.541, same setting) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
@@ -1338,7 +1372,8 @@ only our match after our own changes to it), but both are tracked and worked fro
    none makes learned stoppage detection transfer).
 3. In-domain team model: done, accepted as v25 (players-only vote, DFL + decoded pseudo-labels).
 4. MBR decoding: done, rejected (nested −0.003 on DFL).
-5. Hand fixes from C: restart handover, N/A throw-in team, aerial balls, touch margin.
+5. Hand fixes: done. Touch-margin vote + restart handover pass (v27_4, +0.009, 5/7); ball-out
+   restart team and aerial landing rejected.
 6. **Last: future team reaction (user's idea):** teams reorganise 1–8 s after a turnover, so an offline
    labeller can use the future. Per-team spread, centroid, push toward goal, back-line height,
    compactness, and future-minus-past differences (k = 2, 4, 6 s). Step 1: hand `shape_shift`
