@@ -1432,6 +1432,27 @@ a rebuild is byte-identical): team differs from v27 on 4.2% of live frames.
 ±5 s). `train_team.py --context 20 --path` adds dilation 128 (±20 s): per-frame accuracy 88.1%
 (±10 s: 87.9%), hybrid best 0.537 at switch 45 (±10 s: 0.543). **No gain; rejected.**
 
+### 2026-10-27: second stage with per-player inputs (set encoder)
+
+`refine.player_inputs`: every 12.5 fps step, per team, the K players nearest the ball, each with 8
+numbers in the team's own attacking direction (position, position relative to the ball, velocity
+toward goal and sideways, distance to the ball, distance to the nearest opponent) plus a valid flag.
+One shared per-player MLP (9 → 32 → 32), masked mean and max per team, mixed into the GRU's input,
+so player order and track swaps do not matter. `tune_refine.py --players K`. Same protocol as v29's
+configuration (12.5 fps, 5 seeds, leave one match out, 12 alpha × switch settings; v27 = 0.560):
+
+| configuration | per-frame | mean gain, 12 settings | settings ≥ 6/7 | alpha 0.5 / sw 20 (v29's) | ensemble nested |
+|---|---|---|---|---|---|
+| **no player inputs (v29)** | 90.1% | **+0.0085** | | **0.571 (+0.011)** | **0.571** |
+| 11 players per team | 89.7% | +0.0063 | 8 of 12 | 0.567 (+0.0070, 7/0) | 0.565 (+0.005, 6/1) |
+| 6 players per team | 89.5% | +0.0051 | 6 of 12 | 0.565 (+0.0050, 6/1) | 0.565 (+0.005, 5/2) |
+
+- **Rejected.** Raw per-player inputs lower per-frame accuracy and the gain. 11 players are more
+  consistent per fold (7/0 at five settings) but smaller; seed 0 alone with 6 players loses (2/5).
+  With 7 training matches the network overfits the extra inputs; the hand-made team summaries
+  (reaction features) already carry what it can use. Code kept, off by default (`PLAYERS = 0`);
+  v29 is unchanged.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
@@ -1496,6 +1517,7 @@ only our match after our own changes to it), but both are tracked and worked fro
    bidirectional network (we label offline) that reads the first stage's held-out team
    probabilities plus the reaction features over about ±30 s and re-decides the team.
    Features started in `pipeline/reaction.py` (not wired in yet).
+   Per-player inputs to the second stage (set encoder): rejected (+0.0063 vs +0.0085).
 
 **A. Out-of-match validation: done for Metrica (2026-10-24).** Remaining: DFL open data as a
 second provider, and the `--gt` option on spell_table / boundary_diag for external matches.
