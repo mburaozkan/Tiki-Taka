@@ -1362,9 +1362,15 @@ come from models that saw the held-out match (mild stacking leak).
 
 - **The blend passes the rule (+0.007, 6/7)**; alone, the second stage is worse. Gains in
   J03WMX, J03WN1 and J03WR9 (+0.012 to +0.024), the rest within ±0.009.
-- Running: the ablation without the reaction inputs (is the gain from the team reaction or from a
-  second bidirectional pass?), and v28 on our match (refiner trained on all 7,
-  `models/refine_v28.pt`).
+- **Ablation without the reaction inputs** (`--no-reaction`): per-frame 89.0%, blend 0.5 → 0.560
+  (−0.000), blend 1 → 0.559. **The gain comes from the team-reaction features**, read together
+  with everything else by the bidirectional network, not from a second pass over the first stage.
+  (As a separate hand vote, step 1, they gave nothing.)
+- **v28 on our match** (refiner trained on all 7 DFL matches, `models/refine_v28.pt`, 0.5 MB;
+  `python tools/eval_refine.py --ours 0.5 --skip-dfl` after the v25 build; a rebuild from the
+  saved model is byte-identical): the team differs from v27 on 5.5% of live frames; 275
+  possessions (v27 266), 42% direct, D 37.4%, home share 56.1% (v27 60.1%); public 0.684 / 0.882
+  (v27 0.684 / 0.881). It passes the rule on DFL and leaves the public window unchanged.
 
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
@@ -1421,7 +1427,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 4. MBR decoding: done, rejected (nested −0.003 on DFL).
 5. Hand fixes: done. Touch-margin vote + restart handover pass (v27_4, +0.009, 5/7); ball-out
    restart team and aerial landing rejected.
-6. **Last: future team reaction (user's idea):** teams reorganise 1–8 s after a turnover, so an offline
+6. Future team reaction: done. As a hand vote no gain; in the second-stage bidirectional network
+   +0.007 on DFL (6/7), v28. Original plan: **future team reaction (user's idea):** teams reorganise 1–8 s after a turnover, so an offline
    labeller can use the future. Per-team spread, centroid, push toward goal, back-line height,
    compactness, and future-minus-past differences (k = 2, 4, 6 s). Step 1: hand `shape_shift`
    (H/A split only). Step 2: inputs to the team network / GBM / GRU, context ±10 s. Also report
