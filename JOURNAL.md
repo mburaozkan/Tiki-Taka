@@ -1188,11 +1188,14 @@ window true D called live, true live called D (all / ball seen), spellF1 / macro
 3. In-domain team model: pseudo-labels from our own match, players only, ±10 s.
 4. MBR decoding: calibrated P(H/A/D), FFBS samples, the candidate with the best expected spellF1.
 5. Hand fixes from C: restart handover, N/A throw-in team, aerial balls, touch margin.
-6. **Future team reaction (user's idea):** teams reorganise 1–8 s after a turnover, so an offline
+6. **Last: future team reaction (user's idea):** teams reorganise 1–8 s after a turnover, so an offline
    labeller can use the future. Per-team spread, centroid, push toward goal, back-line height,
    compactness, and future-minus-past differences (k = 2, 4, 6 s). Step 1: hand `shape_shift`
    (H/A split only). Step 2: inputs to the team network / GBM / GRU, context ±10 s. Also report
-   turnover timing and the false-switch rate inside long possessions.
+   turnover timing and the false-switch rate inside long possessions. Step 3: a second-stage
+   bidirectional network (we label offline) that reads the first stage's held-out team
+   probabilities plus the reaction features over about ±30 s and re-decides the team.
+   Features started in `pipeline/reaction.py` (not wired in yet).
 
 **A. Out-of-match validation: done for Metrica (2026-10-24).** Remaining: DFL open data as a
 second provider, and the `--gt` option on spell_table / boundary_diag for external matches.
