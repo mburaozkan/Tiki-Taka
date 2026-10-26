@@ -1233,7 +1233,15 @@ hybrid's team stage on **weak** frames (ball not seen, or nobody within 2 m, or 
 (±10 s: 87.9%), hybrid best 0.537 at switch 45 (±10 s: 0.543). **No gain; rejected.**
 
 ## Current situation
-## Current situation
+
+**Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
+only our match after our own changes to it), but both are tracked and worked from:
+
+| reference | best | score | the other reference |
+|---|---|---|---|
+| public spellF1 (5 min, 17 possessions) | v24_w1 (v21 + in-domain vote, w 1) | 0.690 / 0.878 | DFL 0.536–0.540 (below no vote) |
+| realistic DFL (7 matches, folds won) | v24_w0.25 (w 0.25) | 0.552 (4/7) | public 0.684 / 0.879 |
+| submitted file | v21 | public 0.658 / 0.877 | DFL 0.547 (same setting) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
   filtered to controlled possession, our gap pattern cut in. v19 scores 0.567 / 0.833 there.
