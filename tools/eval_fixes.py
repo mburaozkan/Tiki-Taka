@@ -117,7 +117,7 @@ def dfl():
                 won, lost), flush=True)
 
 
-def ours(specs):
+def ours(specs, name=None):
     from games import GAME, GAMES, half_video_blocks
     from atd_cache import load_arrays
     from pipeline.features import build_features, LENGTH, WIDTH
@@ -132,21 +132,23 @@ def ours(specs):
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
     for i, text in enumerate(specs, start=1):
         codes = apply(parse(text), hand, prob, f, ball, (LENGTH, WIDTH), blk)
-        path = write_submission(os.path.join(RESULTS_DIR, "v27_{}.csv".format(i)), codes)
+        stem = name if name and len(specs) == 1 else "v27_{}".format(i)
+        path = write_submission(os.path.join(RESULTS_DIR, stem + ".csv"), codes)
         reason = pm.validate_submission(pm.read_label_csv(path), GAMES[GAME]["n_video_frames"])
         print("{:<40} {}".format(text, reason or "valid"))
-        print("  " + brief_line("v27_{}".format(i), codes, gt))
+        print("  " + brief_line(stem, codes, gt))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--skip-dfl", action="store_true")
     parser.add_argument("--ours", nargs="*", default=None)
+    parser.add_argument("--name", help="--ours with one spec: write evaluation/results/<name>.csv")
     args = parser.parse_args()
     if not args.skip_dfl:
         dfl()
     if args.ours:
-        ours(args.ours)
+        ours(args.ours, args.name)
 
 
 if __name__ == '__main__':

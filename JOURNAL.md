@@ -1321,7 +1321,8 @@ On our match (`--ours`, from v25's saved inputs):
   is not a single lucky setting.
 - B and C rejected. Rebuild of v27_4: `python tools/in_domain_team.py --ours --skip-dfl --source
   dfl+decoded --weights 0.5`, then `python tools/eval_fixes.py --skip-dfl --ours "A max_s=3
-  slow_ms=2 + D w=0.5 vote_s=2"` (writes `v27_1.csv`).
+  slow_ms=2 + D w=0.5 vote_s=2" --name v27`. **Adopted as the submission (`v27.csv`)**; the
+  rebuild is byte-identical to v27_4.
 
 **Team network context.** Correction: the existing team network already sees about ±10 s (one
 5-tap convolution per block, dilations up to 64: 2 × 127 frames per side; the docstring said
@@ -1337,7 +1338,7 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | v24_w1 (v21 + in-domain vote, w 1) | 0.690 / 0.878 | DFL 0.536–0.540 (below no vote) |
 | realistic DFL (7 matches, folds won) | v27_4 (v25 + touch-margin vote + restart handover) | 0.560 vs 0.551 (5/7, passes) | public 0.684 / 0.881 |
-| **submitted file (since 2026-10-26)** | **v25_w0.5** | public 0.684 / 0.881 | DFL 0.551 (v21 0.541, same setting) |
+| **submitted file (since 2026-10-26)** | **v27** (= v27_4: v25 + touch-margin vote + restart handover) | public 0.684 / 0.881 | DFL 0.560 (v25 0.551, v21 0.541) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
   filtered to controlled possession, our gap pattern cut in. v19 scores 0.567 / 0.833 there.
@@ -1346,7 +1347,11 @@ only our match after our own changes to it), but both are tracked and worked fro
   (absent in stoppages, sitting on the carrier), so models trained on it misread our dead balls.
   Learned models beat the hand model on Metrica (0.822 vs 0.793), but transfer badly to our match
   (v16: public 0.49 / 0.67).
-- **The submission is v25_w0.5** (2026-10-26): v21 plus the in-domain players-only team vote
+- **The submission is v27** (2026-10-26): v25 plus the touch-margin vote and the restart
+  handover. Rebuild: `python tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded
+  --weights 0.5`, then `python tools/eval_fixes.py --skip-dfl --ours "A max_s=3 slow_ms=2 + D
+  w=0.5 vote_s=2" --name v27` (byte-identical on rebuild). Before it, v25_w0.5:
+  v21 plus the in-domain players-only team vote
   (`python tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded --weights 0.5`; model
   `models/po_team_v25.txt`, a rebuild gives a byte-identical file). Before it: v21
   (`python pipeline/run_learned.py --name v21 --source dfl --model blend
