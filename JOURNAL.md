@@ -1702,6 +1702,30 @@ user judged this stretch earlier, by eye, as "not a stoppage, the ball is just m
 tracking loses it after the whistle (likely held or standing among players). So the truth's D is
 right, and #5–#6 is our miss, not a truth-vs-eye case. That leaves only #1–#2 in that class.
 
+**Missing ball as dead-ball evidence, swept on top of v29** (`tools/eval_gap_dead.py`; new hand
+params `w_ease` / `ease_gate` / `ease_ms` 1 / `ease_lag_s` 2, off by default, so v29 is unchanged:
+the default rebuild matches v29's 0.571). Only the hand path's D vs live changes; team as v29. On
+DFL the team probabilities are v29's held-out ones; on our match the second stage is rerun.
+
+| setting | DFL | vs v29 | folds | public spF1 / mF1 | full D | poss | foul after #5 called D |
+|---|---|---|---|---|---|---|---|
+| v29 (w_gap 0.4) | 0.571 | | | 0.697 / 0.882 | 37.4% | 249 | 0% |
+| w_gap 0.4 + ease 0.5 | 0.563 | −0.008 | 0/7 | 0.697 / 0.902 | 39.1% | 244 | 93% |
+| w_gap 0.4 + ease 0.5 + gate | 0.563 | −0.008 | 0/7 | 0.697 / 0.902 | 39.6% | 243 | 93% |
+| w_gap 0.4 + ease 1 | 0.553 | −0.018 | 0/7 | 0.697 / 0.902 | 40.3% | 243 | 93% |
+| w_gap 0.6 | 0.561 | −0.010 | 0/7 | 0.697 / 0.910 | 39.1% | 245 | 0% |
+| w_gap 0.6 + ease 0.5 | 0.556 | −0.015 | 0/7 | 0.697 / 0.929 | 40.5% | 241 | 93% |
+| w_gap 0.8 (v8-like) | 0.557 | −0.014 | 1/6 | 0.675 / 0.927 | 40.0% | 244 | 69% |
+| (the other 8 settings) | 0.539–0.552 | −0.019 to −0.032 | 0/7 | 0.606–0.697 | 40.7–42.7% | | 93% |
+
+- **The easing rule catches the foul** (0% -> 93%) and lifts public macroF1 (0.882 -> 0.902–0.929),
+  but **public spellF1 does not move** (0.697 at best). #5 and #6 were already hits, so catching
+  the stoppage only improves their boundaries, which the frame-level metric sees and spellF1
+  barely does.
+- **On DFL every setting loses, in every fold** (best −0.008, 0/7; nested picks v29's). More missing
+  ball as dead evidence, gated or not, adds false stoppages elsewhere. That is the same reason
+  v19 lowered w_gap. **Rejected; v29 stays.** The params stay in decode.py, off.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

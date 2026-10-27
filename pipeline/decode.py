@@ -82,6 +82,15 @@ PARAMS = {
     # stoppages). On again since v19: on DFL with our gap pattern cut in, +0.042 spellF1 in 7/7
     # matches, under both label definitions; w_gap 0.4 adds +0.011 (7/7).
     "gap_gate": 1.0,
+    # Players easing off: a foul or the ball out stops play, and the pace drops over the next
+    # seconds, while a ball lost by the tracker in open play leaves everyone running. ease = the
+    # drop in mean player speed against ease_lag_s earlier, / ease_ms, clipped to 0-1. In gaps it
+    # adds w_ease x ease to D, and with ease_gate 1 the gap gate uses max(slow, ease) instead of
+    # slow (user, 2026-10-27: the foul after public #5). 0 / 0 = off (v29).
+    "w_ease": 0.0,
+    "ease_gate": 0.0,
+    "ease_ms": 1.0,
+    "ease_lag_s": 2.0,
     "w_out": 1.5,           # ball outside the pitch
     "w_still": 0.4,         # ball (seen) slower than still_ms
     "still_ms": 2.5,
@@ -163,7 +172,11 @@ def emissions(f, p=PARAMS):
     moving = moving * (1.0 - f["ball_out"])
     # Gated by the players: during a stoppage the ball also moves (passed back to the taker,
     # kicked away) while everyone walks, so a moving ball only counts when the players move too.
-    gap = gap * slow ** p["gap_gate"] * (1.0 - (p["w_keeper"] > 0) * np.abs(f["keeper_hold"]))
+    lag = int(p.get("ease_lag_s", 2.0) * FPS)
+    prev = np.concatenate([np.full(lag, ps[0]), ps[:-lag]]) if 0 < lag < n else ps
+    ease = np.clip((prev - ps) / p.get("ease_ms", 1.0), 0.0, 1.0)
+    gate = np.maximum(slow, ease) if p.get("ease_gate", 0.0) else slow
+    gap = gap * gate ** p["gap_gate"] * (1.0 - (p["w_keeper"] > 0) * np.abs(f["keeper_hold"]))
     moving = moving * (1.0 - slow) ** p["moving_gate"]
     slow = slow * (1.0 - (p["w_moving"] > 0) * moving)
 
@@ -187,6 +200,7 @@ def emissions(f, p=PARAMS):
     alone = np.where(f["ball_seen"] > 0, alone, 0.0)
 
     dead = (p["w_gap"] * gap + p["w_out"] * f["ball_out"] + p["w_still"] * still
+            + p.get("w_ease", 0.0) * ease * in_gap
             + p["w_slow"] * slow + p["w_setpiece"] * f["tag_setpiece"]
             + p["w_restart"] * f["tag_restart"]
             + p["w_alone"] * alone - p["dead_bias"])
