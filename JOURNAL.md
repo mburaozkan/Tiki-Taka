@@ -1519,6 +1519,14 @@ cells positive, 4–6 of 7 folds). Next: `--stage1 clean3` (3 gap patterns).
 **Decision (user, 2026-10-27):** keep v29 as the submission for now; v30 (dead-ball head) stays a
 candidate. Continue with clean3.
 
+**Public window, possession by possession, v29 (`tools/spell_table.py`):** 8 of 17 possessions
+at IoU >= 0.7, 4 at 0.5–0.7, 1 at 0.3–0.5 (#11), 4 missed: #2 (IoU 0.27: the turnover after #1
+found 5.8 s late), #10, #12 and #15 (H spells of 0.8, 1.3 and 3.5 s, read as A throughout).
+Biggest timing errors: #5 > D > #6, where the 5.5 s stoppage is missed (A ends 2.0 s early, H
+starts 7.5 s early); #9–#12, where A runs on 12.3 s past #9, the two short H spells are missed and
+a spurious 3.2 s H sits inside #11 (k 2); #14 runs on 9.6 s over the missed #15 into the stoppage
+(v30 trims that to 6.7 s, the only difference between the two). One spurious possession in total.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
