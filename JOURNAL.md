@@ -1757,6 +1757,34 @@ aggregates only):
   already on it. So the pick-up is already used; what is missing is the header (or a pick-up
   earlier than the detected one).
 
+**#15: what the dead-ball side sees.** After the true D starts (+3.5 s) the tracking ball is seen
+and inside the pitch (out 0% over +3.5..+5 s, 4% over +5..+7 s), and the players are no slower
+than in the H spell (1.1–1.3 vs 1.35 m/s). So "ball out + players stopped" has nothing to fire
+on here; (b) dropped for #15.
+
+**Runs of same-team touches as a team vote** (`fixes.run_vote`, `tools/eval_touch_run.py`):
+`min_n` picked touches in a row by one team, each within `max_gap_s`, after a touch by the other
+team (turnover 1): ±w on the blend's log-odds from the first of them (the change stays at the first
+touch) until the other team's next touch, at most `hold_s` after the last. Added to v29's blend
+before the team Viterbi; D vs live untouched. DFL with v29's held-out second stage (refine_b2):
+
+| setting | DFL | vs v29 | folds | public spF1 / mF1 | poss | #13 | #14 | #15 | #7 |
+|---|---|---|---|---|---|---|---|---|---|
+| v29 | 0.571 | | | 0.697 / 0.882 | 249 | 0.54 | 0.78 | miss | 0.76 |
+| **w 2, n 2, gap 2, hold 4 (v29_tr_a)** | 0.573 | +0.0024 | **6/1** | **0.727** / 0.886 | 263 | 0.78 | 0.97 | **0.83** | 0.63 |
+| w 1, n 2, gap 4, hold 1 (v29_tr_b) | 0.574 | +0.0031 | 5/2 | 0.697 / 0.881 | 264 | 0.54 | 0.78 | miss | 0.73 |
+| w 1, n 2, gap 2, hold 4 (v29_tr_c) | 0.573 | +0.0024 | 4/3 | 0.703 / 0.885 | 257 | 0.60 | 0.97 | 0.68 | 0.72 |
+| best by mean: w 1, n 2, gap 2, hold 4 | 0.574 | +0.0034 | 4/3 | | | | | | |
+| nested (setting picked on the other six) | 0.568 | −0.0031 | 4/3 | | | | | | |
+
+- v29_tr_a fixes #15 (two H touches, then held until Athletic's kick), and with it #14's run-on
+  (end +9.6 -> −0.5 s) and #13's early start; #12 is touched (0.13). Cost: #7 0.76 -> 0.63 (ends
+  0.9 s late), #8 starts 0.9 s late. 16 of 17 found, 1 spurious (an A over the true D after #15,
+  the keeper's kick).
+- On DFL the gain is small (+0.002–0.003) and the grid is flat; the 6/1 setting passes the >= 5/7
+  rule, but nested selection loses (−0.003), so the setting itself is not stable across matches.
+  Turnover 1 beats 0; min_n 3 does worse.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

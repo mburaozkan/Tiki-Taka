@@ -16,6 +16,10 @@ restart handover changes the decoded path itself.
   margin_vote       every touch (features "touch") votes for its team over the next `vote_s`,
                     weighted by min(margin / 1.5 m, 1), margin = toucher's lead over the nearest
                     opponent
+  run_vote          `min_n` picked touches in a row by one team, each within `max_gap_s` of the
+                    previous: +/-1 from the first of them (so the change stays at the first touch)
+                    until the other team's next touch, at most `hold_s` after the last one
+                    (public #15, user 2026-10-28)
 """
 
 import numpy as np
@@ -130,4 +134,27 @@ def margin_vote(f, vote_s=1.0, full_m=1.5):
         m = abs(dh[i] - da[i]) if not (np.isnan(dh[i]) or np.isnan(da[i])) else 0.0
         e = min(n, i + int(vote_s * FPS))
         vote[i:e] = np.sign(touch[i]) * min(m / full_m, 1.0)
+    return vote
+
+
+def run_vote(f, min_n=2, max_gap_s=3.0, hold_s=2.0, turnover=True):
+    """+1 / -1 votes over runs of same-team touches. turnover: only runs that follow a touch by
+    the other team (a change of possession, not more touches inside one)."""
+    touch = np.asarray(f["touch"], dtype=np.float64)
+    n = len(touch)
+    idx = np.flatnonzero(touch != 0)
+    side = np.sign(touch[idx])
+    vote = np.zeros(n)
+    i = 0
+    while i < len(idx):
+        j = i
+        while (j + 1 < len(idx) and side[j + 1] == side[i]
+               and idx[j + 1] - idx[j] <= max_gap_s * FPS):
+            j += 1
+        if j - i + 1 >= min_n and (not turnover or (i > 0 and side[i - 1] != side[i])):
+            stop = min(n, idx[j] + int(hold_s * FPS))
+            if j + 1 < len(idx):
+                stop = min(stop, idx[j + 1])
+            vote[idx[i]:stop] = side[i]
+        i = j + 1
     return vote
