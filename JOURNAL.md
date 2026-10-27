@@ -1565,6 +1565,25 @@ tracking is explicitly allowed (CHALLENGE.md), so a per-frame team re-assignment
    match are built that way. Across the other public possessions our starts are on time or early
    (−2.6 to +0.2 s), so #2 is an outlier, not a sign that the truth runs systematically early.
 
+**User's review of the remaining public stretches (2026-10-27, viewer, in words):**
+3. **#5–#6:** not a stoppage on screen; the ball is only missing from the tracking. The truth's
+   5.5 s D looks wrong to the user, and v29 (H through it) looks correct. Same class as #1–#2:
+   truth vs eye.
+4. **#14–#15: a real miss, fixable.** Athletic lose the ball; #15 has two clear Barcelona touches;
+   then the ball goes out of play and the players stop, but the keeper kicks the ball right after
+   it went out, and we carry A on over all of it. Two faults: the two H touches don't turn the
+   possession, and a kick after the ball is out (players stopped) keeps play "live" for us.
+5. **#3: keeper tracking again.** When one keeper is not visible, the tracker doubles the other
+   one (the visible keeper shows up for both teams). Same family as #9–#12; the keeper fix must
+   cover duplicates as well as ghosts and wrong-team slots.
+6. **#4–#7:** fine for now.
+7. **#17:** fine; there the keeper hands the ball to a defender to take the goal kick (we start H
+   1.3 s before the truth, which keeps D until the kick).
+
+Summary: tracking (keepers: ghost, wrong team, duplicate) in #3 and #9–#12; our own misses in
+#14–#15 (touches not turning the possession, play kept live after the ball goes out); truth vs eye
+in #1–#2 and #5–#6 (not to be tuned toward); #4, #7, #17 fine.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
