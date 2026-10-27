@@ -1552,6 +1552,19 @@ names as owning), nothing smoothed or hand-adjusted, and "if your reading disagr
 ground truth is right"; the private full match is built the same way. Improving the provided
 tracking is explicitly allowed (CHALLENGE.md), so a per-frame team re-assignment of slots is legal.
 
+**User's notes from the viewer (2026-10-27), recorded before any change:**
+1. **#9–#12:** two "keepers" are tracked, but wrongly. The slot with Athletic's team stands still in
+   Athletic's goal (likely a frozen ghost track). The moving one, carried by a Barcelona slot, is
+   really Athletic's keeper. Barcelona's keeper is not detected at all. That impostor is what makes
+   us switch to H. The user: we don't need Barcelona's keeper, so the fix is to drop ghosts, cut
+   slots into pieces at gaps / impossible jumps, and decide each piece's team by position (keeper
+   rule: the deepest player in a goal belongs to the team defending it; at most 11 per team).
+2. **#1–#2:** by eye, the truth's switch from #1 (A) to #2 (H) happens too early; v29 switches
+   5.8 s later and looks more accurate to the user. Context: the truth comes mechanically from the
+   corrected tracking's owner flag (CHALLENGE.md), and both the public window and the private full
+   match are built that way. Across the other public possessions our starts are on time or early
+   (−2.6 to +0.2 s), so #2 is an outlier, not a sign that the truth runs systematically early.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
