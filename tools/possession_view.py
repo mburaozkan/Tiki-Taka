@@ -68,9 +68,10 @@ def signals():
     atd = load_arrays()
     cols = idt.player_columns(atd["players"], atd["team"], groups, (LENGTH, WIDTH))
     p1 = stage1(prob, f)
-    xs = (refine.inputs(p1, hand, f, cols), refine.inputs(p1, hand, f, cols, True))
     bundles = [refine.load(os.path.join(ROOT, "models", "refine_{}_s{}.pt".format(REFINE_TAG, s)))
                for s in range(SEEDS)]
+    refine.BIN = bundles[0][0].cfg["BIN"]      # v29 runs at bin 2; inputs() reads the module's
+    xs = (refine.inputs(p1, hand, f, cols), refine.inputs(p1, hand, f, cols, True))
     p_ref = np.mean([refine.predict(b, xs[0], xs[1], len(hand)) for b in bundles], axis=0)
 
     def logit(p):

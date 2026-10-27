@@ -1735,6 +1735,28 @@ not in the table, so their spellF1 is unknown.
 - v29 is clearly better on #3, #5, #7, #11, #13, #14; they are better on #2 (0.36 vs 0.27) and #9
   (0.72 vs 0.62, their #9 ends early). Both miss #10 and #12.
 
+**Viewer bug: the second-stage and blend curves were out of time (2026-10-28).**
+`tools/possession_view.py` built the second-stage inputs with `refine.BIN` at its default 5, but
+v29's refiner runs at bin 2 (`--bin 2`). The predictions were spread over the wrong frames, so the
+"second stage" and "v29 blend" P(home) curves did not belong to the frames under them. The labels,
+touches, ball and pitch panels were right. Fixed: the bin now comes from the saved model's config.
+Check: re-decoding with bin 2 reproduces v29.csv exactly (0 frames differ); with bin 5 it differs
+on 8932 frames. The P(home) 0.82 the user read in #15 came from this bug.
+
+**#2 and #15, with the corrected signals** (`tools/switch_diag.py 2 15`, relative seconds and
+aggregates only):
+- **#15 (H, 3.5 s):** P(H) over the spell: first stage 0.37, second 0.38, blend 0.32; the blend
+  favours H on 9% of it. Summed blend log-odds toward H −69 (a switch costs 20, two needed). Two H
+  touches are picked (−0.5 s, P 0.74, margin 1.8 m; +0.7 s, P 0.73, margin 0.3 m), then A touches
+  at +3.8 s (margin 10.9 m, during the true D) and +5.7 s. The hand path stays live until +9.6 s
+  (truth D from +3.5 s). So the team models do not believe H here, and the touches alone don't
+  move them.
+- **#2 (H, 8.1 s):** P(H) first 0.44, second 0.21, blend 0.33. The first picked touch is A at
+  −0.2 s (P(A) 0.67, nearest player Athletic by 1.5 m): this is the header the user sees as
+  Barcelona's. The next H touch, the pick-up, is at +6.0 s (P 0.96), and v29 switches at +5.8 s,
+  already on it. So the pick-up is already used; what is missing is the header (or a pick-up
+  earlier than the detected one).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
