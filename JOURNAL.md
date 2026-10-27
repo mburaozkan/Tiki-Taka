@@ -1508,6 +1508,14 @@ matches, the remaining 3 singles missing; all cached files verified readable). S
 first stage on live frames, mean over matches x 3 gap patterns: leak-free pairs 88.9%, single
 exclusion 89.6%. Next: the second stage on these inputs (`--stage1 clean`, then `clean3`).
 
+**Leak-free second stage, 1 gap pattern** (`tune_refine.py --bin 2 --seeds 5 --stage1 clean --tag
+b2s5c1`; held-out inputs still v25, so comparable with v29 / b2): per-frame team accuracy 90.1%.
+Grid mean over alpha x switch **+0.0066** (leaky b2: +0.0085); v29's cell (alpha 0.5, switch 20)
+0.567, +0.0065, 4/7 (leaky 0.571, 6/7); best cell alpha 0.5 / switch 15 0.570, +0.0096, 5/7;
+nested 0.570 (leaky 0.571); single seed nested 0.562. So the leak inflated v29's gain by about
+0.002 on the grid mean and 0.004 on its own cell; the second stage still helps without it (all 12
+cells positive, 4–6 of 7 folds). Next: `--stage1 clean3` (3 gap patterns).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
