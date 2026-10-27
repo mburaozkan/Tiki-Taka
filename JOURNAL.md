@@ -109,7 +109,8 @@ column gives the command for the current code.
 | v19 | chosen on DFL with our gaps: v15 + gap gate + w_gap 0.4. DFL 0.567 (v15 0.514) | 294 | 42% | 37% | 0.61 / 0.84 | `python pipeline/run.py --name v19` |
 | v20 | v19 + touch network (trained on DFL, threshold 0.7). DFL blur+gaps 0.567 (v19 0.511) | 277 | 42% | 37% | 0.64 / 0.87 | `python pipeline/run.py --name v20 --touch-net` |
 | **v21** | **v20 decides D; learned GBM+GRU (trained on DFL) decides the team. DFL 0.579 (5/7)** | **261** | **40%** | **37%** | **0.66 / 0.88** | `python pipeline/run_learned.py --name v21 --source dfl --model blend --hybrid 10` |
-| **v29_tr_a** | **submission (2026-10-28):** v29 + touch-run vote (two same-team touches after a turnover back that team, w 2, gap 2 s, hold 4 s). DFL 0.573 (+0.0024, 6/1) | 263 | 40% | 37.4% | 0.727 / 0.886 | v29's chain, then `python tools/eval_touch_run.py --ours "w=2 min_n=2 max_gap_s=2 hold_s=4 turnover=1" --name v29_tr_a` |
+| v29_tr_a | submission 2026-10-28 (morning): v29 + touch-run vote (two same-team touches after a turnover back that team, w 2, gap 2 s, hold 4 s). DFL 0.573 (+0.0024, 6/1) | 263 | 40% | 37.4% | 0.727 / 0.886 | v29's chain, then `python tools/eval_touch_run.py --ours "w=2 min_n=2 max_gap_s=2 hold_s=4 turnover=1" --name v29_tr_a` |
+| **v29_bd_b** | **submission (2026-10-28):** v29_tr_a + backdating (a change of team moves back to the other team's previous touch when that was weak (P < 0.7), within 9 s, nothing between, ball loose >= 1.5 m). DFL 0.5755 (+0.0024 vs v29_tr_a, 5/1; nested +0.0018) | 263 | 40% | 37.4% | 0.812 / 0.901 | v29's chain, then `python tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v29_bd_b` |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -1819,6 +1820,11 @@ player >= `loose_m`). DFL (v29's held-out second stage), 36 settings:
   at #1–#2 was the header.
 - Nested is positive (+0.0018, 5/2), unlike the touch-run vote (−0.003).
 
+**Decision (user, 2026-10-28): v29_bd_b becomes the submission.** `validate_submission.py`: valid;
+rebuild (`tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v29_bd_b`, on v29's
+chain) byte-identical. Full match: 263 possessions, median 9.6 s, direct 40%, D 37.4%; public
+0.812 / 0.901, 16 of 17 found, 1 spurious.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
@@ -1828,7 +1834,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | **v29** (v27 + second-stage network, 12.5 fps, 5 seeds) | 0.697 / 0.882 | DFL 0.571 |
 | realistic DFL (7 matches, folds won) | **v29** | 0.571 vs 0.560 (6/7, passes) | public 0.697 / 0.882 |
-| **submitted file (since 2026-10-28)** | **v29_tr_a** (v29 + touch-run vote) | public 0.727 / 0.886 | DFL 0.573 (v29 0.571, 6/1; nested −0.003) |
+| **submitted file (since 2026-10-28)** | **v29_bd_b** (v29 + touch-run vote + backdating) | public 0.812 / 0.901 | DFL 0.5755 (v29_tr_a 0.5731, v29 0.571) |
+| previous submission (2026-10-28, morning) | v29_tr_a (v29 + touch-run vote) | public 0.727 / 0.886 | DFL 0.573 (v29 0.571, 6/1; nested −0.003) |
 | previous submission (2026-10-26 to 2026-10-28) | v29 (v27 + second-stage bidirectional team network) | public 0.697 / 0.882 | DFL 0.571 (v27 0.560, v25 0.551, v21 0.541) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
@@ -1867,9 +1874,10 @@ only our match after our own changes to it), but both are tracked and worked fro
 
 ## Resume here (paused 2026-10-27 02:35)
 
-**Update 2026-10-28: the submission is v29_tr_a** (v29 + touch-run vote, public 0.727 / 0.886, DFL
-0.573; validated, rebuild byte-identical). Next: public #2 (header + pick-up not turning the
-possession). The notes below are from before.
+**Update 2026-10-28: the submission is v29_bd_b** (v29 + touch-run vote + backdating, public
+0.812 / 0.901, DFL 0.5755; validated, rebuild byte-identical). #2 and #15 are fixed. Still open in
+the public window: #9–#12 (keepers, the short H spells #10 / #12), #6's early start, #5's stoppage.
+The notes below are from before.
 
 State: **v29 was the submission** (public 0.697 / 0.882, DFL 0.571). **v30 candidate** = v29 +
 add-only dead-ball head (public 0.697 / 0.897, DFL 0.612, +0.041 7/7; full D 48.8%, 230 poss at
