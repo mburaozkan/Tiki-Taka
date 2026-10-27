@@ -1691,6 +1691,14 @@ the real keeper is drawn in his corrected colour).
   #9–#13 merge again. So once the keepers are right in both places, our models get #4's end and
   #9–#13 wrong: in v29 the wrong keepers were hiding real model errors there.
 
+**Decision (user):** v29 stays. **The stoppage after #5 (5.5 s), across versions** (share of it
+called D): v5 / v6 / v15 93%; v8–v12 69%; **v19 onwards 0%** (v19, v20, v21, v29, and v30 too). The
+ball is missing on 93% of it. The user's guess is right: since v19 a ball gap counts as dead
+evidence only as far as the players are slow (`gap_gate` 1), at half the weight (`w_gap` 0.8 ->
+0.4), so with the ball lost and players still moving we keep the possession. (v8–v12 had the gate
+at w_gap 0.8: 69%.) v19's change was chosen on DFL with our gap pattern (+0.042, 7/7). Note: the
+user judged this stretch earlier, by eye, as "not a stoppage, the ball is just missing".
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
