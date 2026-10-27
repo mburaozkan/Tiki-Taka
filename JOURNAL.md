@@ -1527,6 +1527,14 @@ starts 7.5 s early); #9–#12, where A runs on 12.3 s past #9, the two short H s
 a spurious 3.2 s H sits inside #11 (k 2); #14 runs on 9.6 s over the missed #15 into the stoppage
 (v30 trims that to 6.7 s, the only difference between the two). One spurious possession in total.
 
+**Leak-free second stage, 3 gap patterns** (`--stage1 clean3 --tag b2s5c3`): per-frame team
+accuracy 90.4% (clean 90.1%). Grid mean **+0.0082** (clean +0.0066, leaky b2 +0.0085), every cell
+positive, 5–7 of 7 folds (one 7/0 cell); v29's cell (alpha 0.5, switch 20) 0.570, +0.0097, 6/7
+(clean 0.567 4/7, leaky 0.571 6/7); best cell alpha 0.75 / switch 20 0.571, +0.0104, 6/7; nested
+0.568 (clean 0.570, leaky 0.571), seed 0 nested 0.566. The 3 gap patterns win back what the leak
+had added, and the folds are steadier, but on DFL it ties v29 rather than beating it. A v31 built
+this way would be v29 without the leak, at the same DFL score.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
