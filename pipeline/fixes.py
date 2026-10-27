@@ -20,6 +20,11 @@ restart handover changes the decoded path itself.
                     previous: +/-1 from the first of them (so the change stays at the first touch)
                     until the other team's next touch, at most `hold_s` after the last one
                     (public #15, user 2026-10-28)
+  backdate          a decoded change to team T at a touch by T, whose previous picked touch was
+                    the other team's with P(touch) below `p_max`, within `max_s`, no picked touch
+                    between and the ball loose (mean nearest-player distance >= `loose_m`):
+                    that earlier touch was probably T's (a header, a flick), so the change moves
+                    back to it (public #2, user 2026-10-28)
 """
 
 import numpy as np
@@ -158,3 +163,35 @@ def run_vote(f, min_n=2, max_gap_s=3.0, hold_s=2.0, turnover=True):
             vote[idx[i]:stop] = side[i]
         i = j + 1
     return vote
+
+
+def backdate(codes, f, p_max=0.8, max_s=6.0, loose_m=2.0, near_s=1.0):
+    """Codes with changes of team moved back to an uncertain previous touch (see above)."""
+    out = codes.copy()
+    touch = np.asarray(f["touch"], dtype=np.float64)
+    th, ta = np.asarray(f["touch_p_home"]), np.asarray(f["touch_p_away"])
+    near = np.fmin(np.asarray(f["d_home"], np.float64), np.asarray(f["d_away"], np.float64))
+    idx = np.flatnonzero(touch != 0)
+    k = int(near_s * FPS)
+    for c in np.flatnonzero((codes[1:] != codes[:-1]) & np.isin(codes[1:], (H, A))
+                            & np.isin(codes[:-1], (H, A))) + 1:
+        side = 1.0 if codes[c] == H else -1.0
+        # the touch by the new team that the change sits on
+        mine = idx[(np.abs(idx - c) <= k) & (np.sign(touch[idx]) == side)]
+        if not len(mine):
+            continue
+        t1 = mine[0]
+        before = idx[idx < t1]
+        if not len(before):
+            continue
+        t0 = before[-1]
+        if np.sign(touch[t0]) == side or t1 - t0 > max_s * FPS:
+            continue
+        if (ta[t0] if side > 0 else th[t0]) >= p_max:
+            continue
+        if np.nanmean(near[t0 + 1:t1]) < loose_m:
+            continue
+        seg = out[t0:c]
+        if np.all(np.isin(seg, (H, A))):
+            out[t0:c] = codes[c]
+    return out

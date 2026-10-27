@@ -1790,6 +1790,35 @@ before the team Viterbi; D vs live untouched. DFL with v29's held-out second sta
 a rebuild (`tools/eval_touch_run.py --ours "w=2 min_n=2 max_gap_s=2 hold_s=4 turnover=1"`) is
 byte-identical. Next: #2.
 
+**#2, by the tracking (aggregates):** the header (−1..0 s) has Athletic nearest (1.5 m vs 3.0 m),
+so the touch is credited to Athletic (P 0.67). Then the ball is loose (2.6 m/s) for 4 s, with a
+real Athletic player (one continuous track, 1082 s long) running beside it, 3.0 m on average, min
+0.7 m, and Barcelona's nearest about 6 m away; Barcelona reaches it at +4..+5 s (0.2 m, P(H touch)
+0.42), picked at +6.0 s (0.96). No tracking error here: the truth gives the loose ball to the
+header's team, and our only error is the header's team.
+
+**Backdating** (`fixes.backdate`, `tools/eval_backdate.py`, on top of v29_tr_a): a decoded change
+to team T at a touch by T moves back to the previous picked touch when that was the other team's
+with P(touch) < `p_max`, within `max_s`, no picked touch between, and the ball loose (mean nearest
+player >= `loose_m`). DFL (v29's held-out second stage), 36 settings:
+
+| setting | DFL | vs v29_tr_a | folds | public spF1 / mF1 | #1 | #2 | #15 |
+|---|---|---|---|---|---|---|---|
+| v29_tr_a (submission) | 0.5731 | | | 0.727 / 0.886 | 0.53 | 0.27 | 0.83 |
+| p_max 0.7, max_s 3–9, loose 2.5 (v29_bd_a, max_s 9) | 0.5757 | +0.0025 | 5/1 | 0.727 / 0.886 | 0.53 | 0.27 | 0.83 |
+| **p_max 0.7, max_s 3–9, loose 1.5 (v29_bd_b, max_s 9)** | 0.5755 | +0.0024 | **5/1** | **0.812 / 0.901** | **0.96** | **0.96** | 0.83 |
+| p_max 0.8, max_s 9, loose 1.5 (probe) | 0.5744 | +0.0013 | 4/2 | 0.752 / 0.893 | 0.96 | 0.96 | 0.17 |
+| p_max 1.01 (any previous touch) | 0.512–0.552 | −0.02 to −0.06 | 0/7 | | | | |
+| nested (picked on the other six) | 0.5750 | **+0.0018** | 5/2 | | | | |
+
+- Only weak earlier touches may be backdated (p_max 0.7): with 0.8, #15's own second touch
+  (P 0.73) gets backdated over and #15 breaks; with any touch, DFL loses in every fold.
+- max_s does not matter on DFL (3 = 6 = 9); #2 needs >= 6.2 s (header to the picked pick-up).
+- v29_bd_b changes nothing else in the public window (#3–#17 as v29_tr_a). #1's end and #2's
+  start now sit on the truth (−0.2 s): the earlier note that by eye the truth switched too early
+  at #1–#2 was the header.
+- Nested is positive (+0.0018, 5/2), unlike the touch-run vote (−0.003).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
