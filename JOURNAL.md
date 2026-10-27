@@ -1541,6 +1541,17 @@ second stage and the v29 blend, touch-network probabilities and picked touches, 
 per team with ball gaps shaded, push / compactness change over 4 s, and the pitch at a cursor
 (slider, arrows, space to play). For the user to inspect #1–#2, #5–#6, #9–#13 and #14–#15.
 
+**User's observation in the viewer (#9–#12):** Athletic's keeper is carried by a track slot whose
+team is Barcelona, which is what makes us switch. DATA.md: slots "appear, vanish and swap identity",
+and we give each slot one fixed team from the metadata (`atd_cache.team_of_each_track`), so a
+swapped slot keeps the wrong team for its whole life. Every input (nearest player per team,
+touches, pseudo-labels, reaction) inherits it, and the DFL training data (clean team ids) never
+showed it. The user also suspects errors in the truth. CHALLENGE.md: the truth is derived
+mechanically from the *corrected* tracking (D where it marks the ball dead, otherwise the team it
+names as owning), nothing smoothed or hand-adjusted, and "if your reading disagrees with it, the
+ground truth is right"; the private full match is built the same way. Improving the provided
+tracking is explicitly allowed (CHALLENGE.md), so a per-frame team re-assignment of slots is legal.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
