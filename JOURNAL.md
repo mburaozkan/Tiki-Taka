@@ -1639,6 +1639,17 @@ tune_refine `--ours 0.5 20`): full D 37.3% (v29 37.4%), 238 possessions (249), p
 - #1–#2 slightly better (late turnover 5.8 -> 5.3 s; #2 IoU 0.27 -> 0.33, now a hit).
 Not adopted; waiting for the user's check in the viewer (#4, #9–#13, #3).
 
+**User: in #9–#13 the keeper is still Barcelona's.** `tools/keeper_window.py 9 13` (seconds only):
+the rule had flipped Athletic's keeper only while he was inside the box; a Barcelona slot was still
+within 25 m of Athletic's goal for 6.0 s. Flipped stretches now extend to the whole stay within
+30 m of the goal (`EXTEND_M`): 18 stretches, 623 s; in the window 3.0 s within 25 m remain (maybe
+a real Barcelona forward). Rebuilt v29_kf: public **0.653 / 0.889** (first fix 0.667; v29 0.697),
+238 possessions, D 37.3%. Per possession the same as the first fix, plus #5 0.72 -> 0.70.
+**#4:** without the fix, an Athletic slot is in Barcelona's box for 40.2 of the 41.6 s, deeper
+than every Barcelona player on most of its piece. That is Barcelona's keeper under an Athletic slot
+(the 262 s of impostors in Barcelona's goal). The fix gives it back to Barcelona (5.5 s left), so
+the flip there is probably right, yet #4 breaks (a new A at its end). To check in the viewer.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

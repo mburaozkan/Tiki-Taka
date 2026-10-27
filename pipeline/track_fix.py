@@ -15,7 +15,8 @@ Attackers do not live in the opponent's box behind the keeper for seconds on end
 for a swap without a gap (two players crossing): inside a piece that fails the test, every run of
 at least STRETCH_S as the deepest in the box, while a still defender stands in that box (the ghost
 the user saw; without it, an attacker deepest while the keeper is untracked would be flipped), is
-flipped, widened to the whole stay in the box. A flipped piece
+flipped, widened to the whole stay within EXTEND_M of the goal (the keeper steps out of his
+box to play the ball; user, #9–#13). A flipped piece
 moves to a new slot of the other team (its old slot is NaN there), so every consumer of
 (players, team) works unchanged. The goal each team defends comes from the team's median x per
 half. Barcelona's untracked keeper is not invented: he only matters with the ball in his box.
@@ -30,6 +31,7 @@ IN_BOX = 0.8
 DEEPEST = 0.5
 MIN_PIECE_S = 2.0
 STRETCH_S = 1.0         # second pass: deepest in the box for at least this long
+EXTEND_M = 30.0         # ...flipped for its whole stay within this of the goal (a keeper steps out)
 STILL_S, STILL_M = 3.0, 0.15
 
 
@@ -71,6 +73,7 @@ def fix_keepers(players, team, blocks, pitch):
             moving_def = box & (team == side)[None, :] & ~still[a:b]
             d_def = np.min(np.where(moving_def, depth, np.inf), axis=1)
             ghost = (box & (team == side)[None, :] & still[a:b]).any(axis=1)
+            near_goal = tracked[a:b] & (np.hypot(depth, py[a:b] - width / 2.0) <= EXTEND_M)
             for i in np.flatnonzero(team != side):
                 for s, e in _runs(tracked[a:b, i]):
                     if e - s < MIN_PIECE_S * FPS:
@@ -86,9 +89,10 @@ def fix_keepers(players, team, blocks, pitch):
                         if de - ds < STRETCH_S * FPS:
                             continue
                         lo, hi = ds, de
-                        while lo > 0 and in_box[lo - 1]:
+                        near = near_goal[s:e, i]
+                        while lo > 0 and near[lo - 1]:
                             lo -= 1
-                        while hi < len(in_box) and in_box[hi]:
+                        while hi < len(near) and near[hi]:
                             hi += 1
                         if not flips or flips[-1][:2] != (i, a + s + lo):
                             flips.append((i, a + s + lo, a + s + hi, side))
