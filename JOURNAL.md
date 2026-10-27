@@ -1584,6 +1584,34 @@ Summary: tracking (keepers: ghost, wrong team, duplicate) in #3 and #9–#12; ou
 #14–#15 (touches not turning the possession, play kept live after the ball goes out); truth vs eye
 in #1–#2 and #5–#6 (not to be tuned toward); #4, #7, #17 fine.
 
+**Decision (user):** do (1) the keeper tracking fix and (2.1) "ball out + players stopped = D, a
+kick right after does not restart play". (2.2) "two opposing touches force a switch" is on hold:
+the possession must still change at the *first* touch, not the second.
+
+**Keeper tracking, measured** (`tools/keeper_diag.py`, full match, graded frames, aggregate;
+checked first on a synthetic match with one of each error planted):
+
+| check | seconds | % graded | ball within 10 m | episodes >= 1 s |
+|---|---|---|---|---|
+| impostor keeper in Barcelona's goal (an Athletic slot deepest, >= 2 m behind every Barcelona player, <= 6 m from the line) | 262 | 4.1% | 4% | 13 |
+| impostor keeper in Athletic's goal (the #9–#12 case) | 30 | 0.5% | 9% | 8 |
+| the same with frozen defenders ignored | 262 / 31 | | | |
+| no defender in the box (keeper not tracked), Barcelona / Athletic goal | 909 / 1276 | 14.3% / 20.1% | 0% | |
+| a slot still (< 0.15 m over 3 s), in a box | 3423 | 53.9% | 0% | 34 |
+| two slots <= 0.3 m apart, same / different teams / keeper zone | 80 / 79 / 10 | 1.3% / 1.2% / 0.2% | 5% / 18% / 11% | 11 / 4 / 2 |
+| (two slots <= 1 m apart, different teams: mostly real duels) | 1264 | 19.9% | 20% | 436 |
+| a slot jumping > 1 m in one frame | 12 | 0.2% | 11% | 5 |
+
+- **Impostor keepers are the real, measurable error:** 13 episodes (262 s) in Barcelona's goal and
+  8 (30 s) in Athletic's. Most happen with the ball far away, but where it comes near they decide
+  the team (#9–#12).
+- **Stillness can't identify ghosts:** real keepers stand nearly still half the match. A still slot
+  in a box is almost never near the ball, so ghosts matter only through the impostor check.
+- **True duplicates (<= 0.3 m) are rare**, in the keeper zone 10 s in total. So the doubling in #3
+  is more likely an impostor than two slots on top of each other.
+- **Identity swaps happen across gaps, not as jumps** (12 s of jumps in the whole match). So the
+  fix works per piece: a slot's continuous tracked run, which is where a new person can start.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
