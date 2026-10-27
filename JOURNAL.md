@@ -1535,6 +1535,12 @@ positive, 5–7 of 7 folds (one 7/0 cell); v29's cell (alpha 0.5, switch 20) 0.5
 had added, and the folds are steadier, but on DFL it ties v29 rather than beating it. A v31 built
 this way would be v29 without the leak, at the same DFL score.
 
+**Viewer for the problem possessions** (`tools/possession_view.py 9 12`, local window only,
+prints nothing about the data): truth / v29 / hand-D strips, P(home) of the first stage, the
+second stage and the v29 blend, touch-network probabilities and picked touches, nearest player
+per team with ball gaps shaded, push / compactness change over 4 s, and the pitch at a cursor
+(slider, arrows, space to play). For the user to inspect #1–#2, #5–#6, #9–#13 and #14–#15.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
