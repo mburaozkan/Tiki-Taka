@@ -1504,6 +1504,10 @@ patterns (test_seed + 0, 1, 2). Cached per call in `data/cache/dfl/s1_<excluded>
 **Paused 2026-10-27 02:35** at 138 of 147 input files (all 21 pairs done; singles done for some
 matches, the remaining 3 singles missing; all cached files verified readable). See "Resume here".
 
+**Resumed 2026-10-27:** the first-stage build is complete (147 of 147 files). Team accuracy of the
+first stage on live frames, mean over matches x 3 gap patterns: leak-free pairs 88.9%, single
+exclusion 89.6%. Next: the second stage on these inputs (`--stage1 clean`, then `clean3`).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
