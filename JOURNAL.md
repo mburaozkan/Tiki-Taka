@@ -1628,6 +1628,17 @@ gap and without one, both flipped; a striker in the box with the keeper deeper, 
 - **Gated on a still defender (kept):** 18 stretches, 585 s (9 from each team); impostors left
   23 s / 22 s, none with the ball within 10 m.
 
+**v29 rebuilt on the keeper-fixed tracking (v29_kf;** same models, `MTAH_VARIANT=_kf`, v25 then
+tune_refine `--ours 0.5 20`): full D 37.3% (v29 37.4%), 238 possessions (249), public **0.667 /
+0.890** (v29 0.697 / 0.882), 0 spurious possessions (v29 1). Per possession:
+- #11: the wrong 3.2 s H is gone (k 2 -> 1, IoU 0.31 -> 0.38), as intended. But that blip had
+  been splitting our long A, so now one A runs from #9 to #13: #9 IoU 0.62 -> 0.47 (end +22.2 s),
+  #13 0.54 -> 0.09. #10 and #12 are still missed (the short H spells were never ours).
+- **#4 breaks:** IoU 0.97 -> 0.76, split in 2 (k 2), end −9.2 s. A new A appears inside Barcelona's
+  41.6 s possession, likely a wrong flip there.
+- #1–#2 slightly better (late turnover 5.8 -> 5.3 s; #2 IoU 0.27 -> 0.33, now a hit).
+Not adopted; waiting for the user's check in the viewer (#4, #9–#13, #3).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
