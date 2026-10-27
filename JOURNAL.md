@@ -1516,6 +1516,9 @@ nested 0.570 (leaky 0.571); single seed nested 0.562. So the leak inflated v29's
 0.002 on the grid mean and 0.004 on its own cell; the second stage still helps without it (all 12
 cells positive, 4–6 of 7 folds). Next: `--stage1 clean3` (3 gap patterns).
 
+**Decision (user, 2026-10-27):** keep v29 as the submission for now; v30 (dead-ball head) stays a
+candidate. Continue with clean3.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
