@@ -67,12 +67,14 @@ def parse(source=DEFAULT_SOURCE, game=GAME, data_dir=None):
 def variant():
     """MTAH_VARIANT, e.g. "_kf": a suffix for every output built on fixed tracking (submissions
     via pipeline.run.write_submission, the v25 inputs cache); "kf" in it applies
-    pipeline.track_fix.fix_keepers to the tactical ATD of our match. Empty: the raw ATD."""
+    pipeline.track_fix.fix_keepers to the tactical ATD of our match, "ki" applies
+    pipeline.track_fix.ignore_impostors (the user's rule). Empty: the raw ATD."""
     return os.environ.get("MTAH_VARIANT", "")
 
 
-def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False):
-    """Cached parse(). The first call builds data/cache/<game>_<source>_atd.npz."""
+def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False, raw=False):
+    """Cached parse(). The first call builds data/cache/<game>_<source>_atd.npz. raw: ignore
+    MTAH_VARIANT (no track fix)."""
     path = os.path.join(CACHE_DIR, "{}_{}_atd.npz".format(game, source))
     if rebuild or not os.path.isfile(path):
         arrays = parse(source, game, data_dir)
@@ -81,7 +83,15 @@ def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False):
     else:
         with np.load(path) as cached:
             arrays = {key: cached[key] for key in cached.files}
-    if "kf" in variant() and source == "tactical" and game == GAME:
+    if raw or source != "tactical" or game != GAME:
+        return arrays
+    if "ki" in variant():
+        from games import GAMES, half_video_blocks
+        from pipeline.track_fix import ignore_impostors
+        blocks = [(a, b + 1) for _, a, b in half_video_blocks(game)]
+        arrays["players"], _ = ignore_impostors(arrays["players"], arrays["team"], blocks,
+                                                GAMES[game]["pitch"])
+    if "kf" in variant():
         from games import GAMES, half_video_blocks
         from pipeline.track_fix import fix_keepers
         blocks = [(a, b + 1) for _, a, b in half_video_blocks(game)]

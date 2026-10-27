@@ -1650,6 +1650,26 @@ than every Barcelona player on most of its piece. That is Barcelona's keeper und
 (the 262 s of impostors in Barcelona's goal). The fix gives it back to Barcelona (5.5 s left), so
 the flip there is probably right, yet #4 breaks (a new A at its end). To check in the viewer.
 
+**User's rule instead (v29 stays the base; nothing flipped):** a team's keeper is *visible* when
+its deepest player is inside its own box and >= 2 m behind the rest of the team (the defensive
+line). While it is, a player of the other team behind that line and within 30 m of that goal for
+>= 2 s is the doubled or swapped keeper from the far side, and is ignored (NaN). With no visible
+keeper, nothing changes. `pipeline/track_fix.keeper_status / ignore_impostors`, `MTAH_VARIANT=_ki`.
+Synthetic: impostor ignored (16 s); no visible keeper, nothing ignored; a striker staying >= 2 s
+behind the line is ignored too (a known side effect of the rule).
+- Full match: keeper visible Barcelona 81%, Athletic 74% of graded frames; ignored 1454 s
+  (Barcelona slots 599 s, Athletic slots 870 s).
+- In #4: Barcelona's keeper visible 90%, Athletic's 0%, an Athletic slot behind Barcelona's line
+  ignored for 36.5 s (the doubled keeper, as the user saw in #3). #11: 6.5 s of a Barcelona slot
+  ignored.
+- **v29_ki: public 0.640 / 0.886**, D 39.2%, 235 possessions. Per possession the same as both
+  fixes before: #11's wrong H gone, #2 now a hit, but #9–#13 merge into one A (#13 IoU 0.09) and #4
+  breaks (0.97 -> 0.76, k 2, end −9.2 s). #3 0.61 -> 0.55, #16 0.94 -> 0.85.
+- So all three ways (flip, flip extended, ignore) give the same #4 / #9–#13 result: the keeper is
+  handled as the rule intends, and what changes is how the models react without the wrong player.
+- Viewer `--keepers` (default on): strips for "H keeper" / "A keeper" visible, and on the pitch
+  the raw tracking with the ignored players as grey crosses.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

@@ -108,3 +108,76 @@ def fix_keepers(players, team, blocks, pitch):
              "per_team": (sum(team[i] == 0 for i, _, _, _ in flips),
                           sum(team[i] == 1 for i, _, _, _ in flips))}
     return np.concatenate([out, extra], axis=1), new_team, stats
+
+
+# The user's rule (2026-10-27), kept apart from fix_keepers: nothing is flipped, impostors are
+# ignored. A team's keeper is visible when its deepest player, inside its own box, stands at least
+# LINE_GAP_M behind the rest of the team (the defensive line). While it is, a player of the other
+# team behind that line and within EXTEND_M of that goal for at least IGNORE_MIN_S is the doubled or
+# swapped keeper from the far side of the pitch, and is ignored (NaN). No visible keeper: no change.
+LINE_GAP_M = 2.0
+IGNORE_MIN_S = 2.0
+
+
+def _goals(px, tracked, team, blocks, length):
+    """(n, 2) x of the goal each team defends (NaN outside the blocks): median team x per half."""
+    goal = np.full((len(px), 2), np.nan)
+    for a, b in blocks:
+        for side in (0, 1):
+            cols = team == side
+            with np.errstate(invalid="ignore"):
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    mx = np.nanmedian(np.nanmean(np.where(tracked[a:b][:, cols], px[a:b][:, cols],
+                                                          np.nan), axis=1))
+            goal[a:b, side] = 0.0 if mx < length / 2.0 else length
+    return goal
+
+
+def keeper_status(players, team, blocks, pitch):
+    """(visible (n, 2) bool per team, ignored (n, k) bool): see the comment above."""
+    length, width = pitch
+    team = np.asarray(team)
+    px = players[:, :, 0].astype(np.float64) * length
+    py = players[:, :, 1].astype(np.float64) * width
+    tracked = ~np.isnan(px)
+    goal = _goals(px, tracked, team, blocks, length)
+    n, k = px.shape
+    visible = np.zeros((n, 2), dtype=bool)
+    ignored = np.zeros((n, k), dtype=bool)
+    for side in (0, 1):
+        gx = goal[:, side][:, None]
+        with np.errstate(invalid="ignore"):
+            depth = np.where(tracked, np.abs(px - gx), np.inf)
+            central = np.abs(py - width / 2.0)
+        own = np.where((team == side)[None, :], depth, np.inf)
+        part = np.partition(own, 1, axis=1) if k > 1 else np.full((n, 2), np.inf)
+        d1, d2 = part[:, 0], part[:, 1]
+        deepest = np.argmin(own, axis=1)
+        in_box = (d1 <= BOX_DEPTH_M) & (central[np.arange(n), deepest] <= BOX_HALF_M)
+        with np.errstate(invalid="ignore"):
+            visible[:, side] = in_box & (d2 - d1 >= LINE_GAP_M) & np.isfinite(gx[:, 0])
+        with np.errstate(invalid="ignore"):
+            near = np.hypot(depth, central) <= EXTEND_M
+        behind = visible[:, side][:, None] & (depth < d2[:, None]) & near & (team != side)[None, :]
+        for i in np.flatnonzero(team != side):
+            for s, e in _runs(behind[:, i]):
+                if e - s >= IGNORE_MIN_S * FPS:
+                    ignored[s:e, i] = True
+    return visible, ignored
+
+
+def ignore_impostors(players, team, blocks, pitch):
+    """(players with the ignored entries NaN, stats {"seconds", "per_team", "visible"})."""
+    visible, ignored = keeper_status(players, team, blocks, pitch)
+    out = players.copy()
+    out[ignored] = np.nan
+    team = np.asarray(team)
+    graded = np.zeros(len(players), dtype=bool)
+    for a, b in blocks:
+        graded[a:b] = True
+    stats = {"seconds": ignored.any(axis=1).sum() / float(FPS),
+             "per_team": tuple(ignored[:, team == s].any(axis=1).sum() / float(FPS) for s in (0, 1)),
+             "visible": tuple(visible[graded, s].mean() for s in (0, 1))}
+    return out, stats

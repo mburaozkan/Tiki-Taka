@@ -18,7 +18,11 @@ Left, sharing the time axis:
   ball       nearest home / away player to the ball (m); grey bands = ball not seen
   reaction   per team: push toward goal and compactness change over the next 4 s (the second
              stage's strongest new evidence)
-Right: the pitch at the cursor (home blue, away red, ball black). Click on any plot, drag the
+  (keepers)  with --keepers (default; --no-keepers hides it): whether each team's keeper is
+             visible (pipeline/track_fix.keeper_status), as two strips under the labels
+Right: the pitch at the cursor (home blue, away red, ball black; with --keepers the raw tracking,
+and players the keeper rule ignores as grey crosses, so the other team's doubled keeper is not
+shown as theirs). Click on any plot, drag the
 slider, or use left / right (0.2 s; shift: 1 s) and space to play / pause.
 """
 
@@ -80,13 +84,13 @@ def signals():
             "pitch": (LENGTH, WIDTH)}
 
 
-def strip(ax, codes, t, y, label):
+def strip(ax, codes, t, y, label, h=0.17):
     """One coloured label bar at height y."""
     edges = np.flatnonzero(np.diff(codes)) + 1
     for a, b in zip(np.concatenate(([0], edges)), np.concatenate((edges, [len(codes)]))):
-        ax.axvspan(t[a], t[b - 1] + 1.0 / FPS, ymin=y, ymax=y + 0.28, color=COLORS[int(codes[a])],
+        ax.axvspan(t[a], t[b - 1] + 1.0 / FPS, ymin=y, ymax=y + h, color=COLORS[int(codes[a])],
                    lw=0)
-    ax.text(t[0], y + 0.14, label + " ", ha="right", va="center", transform=ax.get_xaxis_transform(),
+    ax.text(t[0], y + h / 2.0, label + " ", ha="right", va="center", transform=ax.get_xaxis_transform(),
             fontsize=8)
 
 
@@ -96,6 +100,10 @@ def main():
     parser.add_argument("last", type=int, nargs="?", help="last one (default: first)")
     parser.add_argument("--pad", type=float, default=5.0, help="seconds shown either side")
     parser.add_argument("--sub", default=SUB, help="submission to compare with the truth")
+    parser.add_argument("--keepers", action=argparse.BooleanOptionalAction, default=True,
+                        help="keeper visible per team (pipeline/track_fix.keeper_status) as two "
+                             "strips; on the pitch the raw tracking, the players that rule ignores "
+                             "(the other team's doubled or swapped keeper) drawn as grey crosses")
     args = parser.parse_args()
     last = args.last or args.first
 
@@ -127,13 +135,22 @@ def main():
         args.first, last, os.path.splitext(os.path.basename(args.sub))[0]))
 
     ax = axes[0]
-    strip(ax, gt[a:b], t, 0.68, "truth")
-    strip(ax, sub[a:b], t, 0.36, os.path.splitext(os.path.basename(args.sub))[0])
+    strip(ax, gt[a:b], t, 0.80, "truth")
+    strip(ax, sub[a:b], t, 0.61, os.path.splitext(os.path.basename(args.sub))[0])
     hand = np.where(np.isin(s["hand"][a:b], (pm.H, pm.A)), pm.X, pm.D)
-    strip(ax, hand, t, 0.04, "hand D")
+    strip(ax, hand, t, 0.42, "hand D")
+    if args.keepers:
+        from atd_cache import load_arrays
+        from games import GAME, half_video_blocks
+        from pipeline.track_fix import keeper_status
+        raw = load_arrays(raw=True)
+        blk = [(x, y + 1) for _, x, y in half_video_blocks(GAME)]
+        visible, ignored = keeper_status(raw["players"], raw["team"], blk, s["pitch"])
+        strip(ax, np.where(visible[a:b, 0], pm.H, pm.X), t, 0.23, "H keeper")
+        strip(ax, np.where(visible[a:b, 1], pm.A, pm.X), t, 0.04, "A keeper")
     for i, (sa, sb, k) in enumerate(spells):
         if sa < b and sb > a:
-            ax.text(((max(sa, a) + min(sb, b)) / 2.0 - a) / FPS, 0.82, "#{}".format(i + 1),
+            ax.text(((max(sa, a) + min(sb, b)) / 2.0 - a) / FPS, 0.885, "#{}".format(i + 1),
                     ha="center", va="center", transform=ax.get_xaxis_transform(), fontsize=9,
                     color="white", weight="bold")
     ax.set_yticks([])
@@ -193,23 +210,33 @@ def main():
     home_dots = pitch_ax.scatter([], [], s=40, color=COLORS[pm.H])
     away_dots = pitch_ax.scatter([], [], s=40, color=COLORS[pm.A])
     ball_dot = pitch_ax.scatter([], [], s=25, color="black", zorder=3)
+    ignored_dots = pitch_ax.scatter([], [], s=60, color="#718096", marker="x", zorder=4)
     info = pitch_ax.set_title("", fontsize=9)
     letters = {pm.H: "H", pm.A: "A", pm.D: "D", pm.X: "X"}
     team = np.asarray(s["team"])
+    if args.keepers:                # draw the raw tracking; ignored players as grey crosses
+        draw_players, team = raw["players"], np.asarray(raw["team"])
+    else:
+        draw_players, ignored, visible = s["players"], None, None
 
     slider = Slider(fig.add_axes([0.07, 0.04, 0.6, 0.025]), "t (s)", 0, t[-1], valinit=0)
 
     def show(sec):
         i = a + int(round(sec * FPS))
         i = min(max(i, a), b - 1)
-        xy = s["players"][i, :, :2] * np.array([length, width])
-        home_dots.set_offsets(xy[team == 0][~np.isnan(xy[team == 0, 0])].reshape(-1, 2))
-        away_dots.set_offsets(xy[team == 1][~np.isnan(xy[team == 1, 0])].reshape(-1, 2))
+        xy = draw_players[i, :, :2] * np.array([length, width])
+        skip = ignored[i] if ignored is not None else np.zeros(len(team), dtype=bool)
+        for dots, side in ((home_dots, 0), (away_dots, 1)):
+            keep = (team == side) & ~skip & ~np.isnan(xy[:, 0])
+            dots.set_offsets(xy[keep].reshape(-1, 2))
+        ignored_dots.set_offsets(xy[skip & ~np.isnan(xy[:, 0])].reshape(-1, 2))
         ball = s["ball"][i, :2] * np.array([length, width])
         ball_dot.set_offsets(ball.reshape(1, 2) if not np.isnan(ball[0]) else np.empty((0, 2)))
-        info.set_text("{:.1f} s   truth {}   ours {}   P(home) {:.2f}{}".format(
+        keepers = ("" if visible is None else "\nkeeper visible: H {}  A {}   (x = ignored)".format(
+            "yes" if visible[i, 0] else "NO", "yes" if visible[i, 1] else "NO"))
+        info.set_text("{:.1f} s   truth {}   ours {}   P(home) {:.2f}{}{}".format(
             sec, letters[int(gt[i])], letters[int(sub[i])], s["blend"][i],
-            "" if not np.isnan(ball[0]) else "   NO BALL"))
+            "" if not np.isnan(ball[0]) else "   NO BALL", keepers))
         for c in cursors:
             c.set_xdata([sec, sec])
         fig.canvas.draw_idle()
