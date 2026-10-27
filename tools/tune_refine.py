@@ -200,7 +200,7 @@ def ours(ex, args, alpha, sw):
             b = refine.train(train_ex, steps=args.steps, seed=seed, log=lambda *_: None)
             refine.save(b, path)
             bundles.append(refine.load(path))      # predict exactly as a rebuild will
-    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob.npz")) as c:
+    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob{}.npz".format(os.environ.get("MTAH_VARIANT", "")))) as c:
         hand, prob = c["hand"], c["prob"]
     f = build_features(events=[], touch_model=touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH)))
     blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]

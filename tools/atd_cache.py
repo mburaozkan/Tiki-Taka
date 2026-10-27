@@ -64,6 +64,13 @@ def parse(source=DEFAULT_SOURCE, game=GAME, data_dir=None):
     return {"players": players, "ball": ball, "team": team}
 
 
+def variant():
+    """MTAH_VARIANT, e.g. "_kf": a suffix for every output built on fixed tracking (submissions
+    via pipeline.run.write_submission, the v25 inputs cache); "kf" in it applies
+    pipeline.track_fix.fix_keepers to the tactical ATD of our match. Empty: the raw ATD."""
+    return os.environ.get("MTAH_VARIANT", "")
+
+
 def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False):
     """Cached parse(). The first call builds data/cache/<game>_<source>_atd.npz."""
     path = os.path.join(CACHE_DIR, "{}_{}_atd.npz".format(game, source))
@@ -71,9 +78,16 @@ def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False):
         arrays = parse(source, game, data_dir)
         os.makedirs(CACHE_DIR, exist_ok=True)
         np.savez(path, **arrays)
-        return arrays
-    with np.load(path) as cached:
-        return {key: cached[key] for key in cached.files}
+    else:
+        with np.load(path) as cached:
+            arrays = {key: cached[key] for key in cached.files}
+    if "kf" in variant() and source == "tactical" and game == GAME:
+        from games import GAMES, half_video_blocks
+        from pipeline.track_fix import fix_keepers
+        blocks = [(a, b + 1) for _, a, b in half_video_blocks(game)]
+        arrays["players"], arrays["team"], _ = fix_keepers(arrays["players"], arrays["team"],
+                                                           blocks, GAMES[game]["pitch"])
+    return arrays
 
 
 if __name__ == '__main__':

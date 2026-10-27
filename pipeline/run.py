@@ -39,7 +39,9 @@ def parse_overrides(pairs):
 
 
 def write_submission(path, codes):
-    """frame,label CSV."""
+    """frame,label CSV; MTAH_VARIANT (tools/atd_cache.variant) is added to the file stem."""
+    stem, ext = os.path.splitext(path)
+    path = stem + os.environ.get("MTAH_VARIANT", "") + ext
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", newline="\n") as handle:
         handle.write("frame,label\n")

@@ -132,7 +132,7 @@ def ours(tau, sw):
     from pipeline.run import write_submission, RESULTS_DIR
     import possession_metrics as pm2
     v25 = pm2.label_codes(pm2.read_label_csv(os.path.join(RESULTS_DIR, "v25_w0.5.csv")))
-    path = os.path.join(dd.CACHE, "..", "v25_ours_prob.npz")
+    path = os.path.join(dd.CACHE, "..", "v25_ours_prob{}.npz".format(os.environ.get("MTAH_VARIANT", "")))
     if not os.path.isfile(path):
         sys.exit("run tools/in_domain_team.py --ours --skip-dfl --source dfl+decoded --weights 0.5 "
                  "--save-prob first")

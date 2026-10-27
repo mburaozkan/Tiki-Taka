@@ -52,7 +52,7 @@ def signals():
     from atd_cache import load_arrays
     from pipeline.features import build_features, LENGTH, WIDTH
     from pipeline import touch_net
-    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob.npz")) as c:
+    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob{}.npz".format(os.environ.get("MTAH_VARIANT", "")))) as c:
         hand, prob = c["hand"], c["prob"]
     f = build_features(events=[], touch_model=touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH)))
     blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]

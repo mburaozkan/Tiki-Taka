@@ -124,7 +124,7 @@ def ours(specs, name=None):
     from pipeline import touch_net
     from pipeline.run import write_submission, RESULTS_DIR
     from report import brief_line, PUBLIC_GT
-    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob.npz")) as c:
+    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob{}.npz".format(os.environ.get("MTAH_VARIANT", "")))) as c:
         hand, prob = c["hand"], c["prob"]
     f = build_features(events=[], touch_model=touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH)))
     ball = load_arrays()["ball"]

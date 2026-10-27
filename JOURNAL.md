@@ -1612,6 +1612,22 @@ checked first on a synthetic match with one of each error planted):
 - **Identity swaps happen across gaps, not as jumps** (12 s of jumps in the whole match). So the
   fix works per piece: a slot's continuous tracked run, which is where a new person can start.
 
+**Keeper fix** (`pipeline/track_fix.fix_keepers`; on with `MTAH_VARIANT=_kf`, which also suffixes
+every submission and the v25 inputs cache, so v29's files are untouched). A piece of team T counts
+as the other team's keeper when, within a half:
+- it spends >= 80% of its frames in the box of the goal the other team defends, and on >= 50% of
+  them it is deeper than every *moving* defender there (a still one may be a ghost), for >= 2 s;
+- or (a swap without a gap) it is the deepest for >= 1 s while a still defender (the ghost) stands
+  in that box. That stretch is flipped, widened to the piece's whole stay in the box.
+A flipped stretch moves to a new slot of the other team. Synthetic tests: ghost + impostor across a
+gap and without one, both flipped; a striker in the box with the keeper deeper, not flipped.
+- Whole pieces only: 8 pieces, 391 s. Impostors in Barcelona's goal 262 -> 24 s; in Athletic's
+  goal 30 -> 30 s (those swaps happen without a gap).
+- With the second pass ungated: 58 stretches, 1169 s, impostors 0 / 0. Too many: with Athletic's
+  keeper untracked (20% of the time), any Barcelona attacker deepest in the box was flipped.
+- **Gated on a still defender (kept):** 18 stretches, 585 s (9 from each team); impostors left
+  23 s / 22 s, none with the ball within 10 m.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
