@@ -1698,6 +1698,9 @@ evidence only as far as the players are slow (`gap_gate` 1), at half the weight 
 0.4), so with the ball lost and players still moving we keep the possession. (v8–v12 had the gate
 at w_gap 0.8: 69%.) v19's change was chosen on DFL with our gap pattern (+0.042, 7/7). Note: the
 user judged this stretch earlier, by eye, as "not a stoppage, the ball is just missing".
+**Correction (user):** it is a real stoppage, a foul. The ball is visible on video, but the
+tracking loses it after the whistle (likely held or standing among players). So the truth's D is
+right, and #5–#6 is our miss, not a truth-vs-eye case. That leaves only #1–#2 in that class.
 
 ## Current situation
 
