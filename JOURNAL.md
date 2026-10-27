@@ -109,6 +109,7 @@ column gives the command for the current code.
 | v19 | chosen on DFL with our gaps: v15 + gap gate + w_gap 0.4. DFL 0.567 (v15 0.514) | 294 | 42% | 37% | 0.61 / 0.84 | `python pipeline/run.py --name v19` |
 | v20 | v19 + touch network (trained on DFL, threshold 0.7). DFL blur+gaps 0.567 (v19 0.511) | 277 | 42% | 37% | 0.64 / 0.87 | `python pipeline/run.py --name v20 --touch-net` |
 | **v21** | **v20 decides D; learned GBM+GRU (trained on DFL) decides the team. DFL 0.579 (5/7)** | **261** | **40%** | **37%** | **0.66 / 0.88** | `python pipeline/run_learned.py --name v21 --source dfl --model blend --hybrid 10` |
+| **v29_tr_a** | **submission (2026-10-28):** v29 + touch-run vote (two same-team touches after a turnover back that team, w 2, gap 2 s, hold 4 s). DFL 0.573 (+0.0024, 6/1) | 263 | 40% | 37.4% | 0.727 / 0.886 | v29's chain, then `python tools/eval_touch_run.py --ours "w=2 min_n=2 max_gap_s=2 hold_s=4 turnover=1" --name v29_tr_a` |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -1785,6 +1786,10 @@ before the team Viterbi; D vs live untouched. DFL with v29's held-out second sta
   rule, but nested selection loses (−0.003), so the setting itself is not stable across matches.
   Turnover 1 beats 0; min_n 3 does worse.
 
+**Decision (user, 2026-10-28): v29_tr_a becomes the submission.** `validate_submission.py`: valid;
+a rebuild (`tools/eval_touch_run.py --ours "w=2 min_n=2 max_gap_s=2 hold_s=4 turnover=1"`) is
+byte-identical. Next: #2.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
@@ -1794,7 +1799,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | **v29** (v27 + second-stage network, 12.5 fps, 5 seeds) | 0.697 / 0.882 | DFL 0.571 |
 | realistic DFL (7 matches, folds won) | **v29** | 0.571 vs 0.560 (6/7, passes) | public 0.697 / 0.882 |
-| **submitted file (since 2026-10-26, evening)** | **v29** (v27 + second-stage bidirectional team network) | public 0.697 / 0.882 | DFL 0.571 (v27 0.560, v25 0.551, v21 0.541) |
+| **submitted file (since 2026-10-28)** | **v29_tr_a** (v29 + touch-run vote) | public 0.727 / 0.886 | DFL 0.573 (v29 0.571, 6/1; nested −0.003) |
+| previous submission (2026-10-26 to 2026-10-28) | v29 (v27 + second-stage bidirectional team network) | public 0.697 / 0.882 | DFL 0.571 (v27 0.560, v25 0.551, v21 0.541) |
 
 - **DFL open data is the main test set (2026-10-24):** real tracking, provider possession flags
   filtered to controlled possession, our gap pattern cut in. v19 scores 0.567 / 0.833 there.
@@ -1832,7 +1838,11 @@ only our match after our own changes to it), but both are tracked and worked fro
 
 ## Resume here (paused 2026-10-27 02:35)
 
-State: **v29 is the submission** (public 0.697 / 0.882, DFL 0.571). **v30 candidate** = v29 +
+**Update 2026-10-28: the submission is v29_tr_a** (v29 + touch-run vote, public 0.727 / 0.886, DFL
+0.573; validated, rebuild byte-identical). Next: public #2 (header + pick-up not turning the
+possession). The notes below are from before.
+
+State: **v29 was the submission** (public 0.697 / 0.882, DFL 0.571). **v30 candidate** = v29 +
 add-only dead-ball head (public 0.697 / 0.897, DFL 0.612, +0.041 7/7; full D 48.8%, 230 poss at
 the edge of plausible): waiting on the user's decision whether to submit it.
 
