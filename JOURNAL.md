@@ -1726,6 +1726,15 @@ DFL the team probabilities are v29's held-out ones; on our match the second stag
   ball as dead evidence, gated or not, adds false stoppages elsewhere. That is the same reason
   v19 lowered w_gap. **Rejected; v29 stays.** The params stay in decode.py, off.
 
+**A teammate's per-possession table (public window), against v29.** Their status column marks
+IoU >= 0.5 (the headline threshold) as OK; the ranking averages 0.3–0.7. Recall in points (one
+per threshold, 85 in total): **teammate 43 / 85 (0.51), v29 55 / 85 (0.65)**; their spurious count is
+not in the table, so their spellF1 is unknown.
+- **They get #15** (IoU 0.71, Barcelona's 3.5 s spell that v29 misses) because their #14 stops
+  about 10 s early; their #14 itself scores only 0.30.
+- v29 is clearly better on #3, #5, #7, #11, #13, #14; they are better on #2 (0.36 vs 0.27) and #9
+  (0.72 vs 0.62, their #9 ends early). Both miss #10 and #12.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
