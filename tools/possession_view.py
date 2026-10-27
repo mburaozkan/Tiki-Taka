@@ -3,6 +3,8 @@
     python tools/possession_view.py 9 12                  # true possessions #9 to #12 (+/- 5 s)
     python tools/possession_view.py 1 2 --pad 8
     python tools/possession_view.py 14 15 --sub evaluation/results/v30_d1n_add.csv
+    set MTAH_VARIANT=_kf  (PowerShell: $env:MTAH_VARIANT="_kf")  then as above: the keeper-fixed
+                          tracking (pipeline/track_fix.py) and v29_kf.csv
 
 For the user's eyes only: the window opens locally and nothing about the data is printed (the
 match data must not reach a hosted LLM, JOURNAL.md 2026-10-23). Possessions are numbered as in
@@ -39,7 +41,7 @@ from report import PUBLIC_GT, FPS  # noqa: E402
 from pipeline import refine  # noqa: E402
 
 # Params
-SUB = os.path.join(ROOT, "evaluation", "results", "v29.csv")
+SUB = os.path.join(ROOT, "evaluation", "results", "v29{}.csv".format(os.environ.get("MTAH_VARIANT", "")))
 REFINE_TAG = "v29"
 SEEDS = 5
 ALPHA = 0.5             # v29's blend weight
