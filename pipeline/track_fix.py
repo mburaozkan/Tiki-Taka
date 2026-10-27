@@ -135,8 +135,11 @@ def _goals(px, tracked, team, blocks, length):
     return goal
 
 
-def keeper_status(players, team, blocks, pitch):
-    """(visible (n, 2) bool per team, ignored (n, k) bool): see the comment above."""
+def keeper_status(players, team, blocks, pitch, own_keeper=False):
+    """(visible (n, 2) bool per team, ignored (n, k) bool): see the comment above.
+    own_keeper=True: the same cases, but the team's own "visible keeper" (its deepest player) is the one
+    ignored, since there the other team's slot is the real keeper (user, 2026-10-27, #4); the
+    third value is then the other team's slots in those cases (n, k), for own_flip."""
     length, width = pitch
     team = np.asarray(team)
     px = players[:, :, 0].astype(np.float64) * length
@@ -146,6 +149,8 @@ def keeper_status(players, team, blocks, pitch):
     n, k = px.shape
     visible = np.zeros((n, 2), dtype=bool)
     ignored = np.zeros((n, k), dtype=bool)
+    own_ign = np.zeros((n, k), dtype=bool)
+    cases = np.zeros((n, k), dtype=bool)
     for side in (0, 1):
         gx = goal[:, side][:, None]
         with np.errstate(invalid="ignore"):
@@ -161,23 +166,47 @@ def keeper_status(players, team, blocks, pitch):
         with np.errstate(invalid="ignore"):
             near = np.hypot(depth, central) <= EXTEND_M
         behind = visible[:, side][:, None] & (depth < d2[:, None]) & near & (team != side)[None, :]
+        side_cases = np.zeros((n, k), dtype=bool)
         for i in np.flatnonzero(team != side):
             for s, e in _runs(behind[:, i]):
                 if e - s >= IGNORE_MIN_S * FPS:
-                    ignored[s:e, i] = True
+                    side_cases[s:e, i] = True
+        ignored |= side_cases
+        cases |= side_cases
+        rows = np.flatnonzero(side_cases.any(axis=1))
+        own_ign[rows, deepest[rows]] = True
+    if own_keeper:
+        return visible, own_ign, cases
     return visible, ignored
 
 
-def ignore_impostors(players, team, blocks, pitch):
-    """(players with the ignored entries NaN, stats {"seconds", "per_team", "visible"})."""
-    visible, ignored = keeper_status(players, team, blocks, pitch)
+def ignore_impostors(players, team, blocks, pitch, mode="opponent"):
+    """(players, team, stats {"seconds", "per_team", "visible"}). mode "opponent": the other team's
+    slot behind the line is ignored (NaN); "own": the team's own deepest player is ignored instead;
+    "own_flip": as "own", and the other team's slot is moved to a new slot of the defending team
+    (the real keeper with his right team)."""
+    team = np.asarray(team)
+    if mode == "opponent":
+        visible, ignored = keeper_status(players, team, blocks, pitch)
+        cases = None
+    else:
+        visible, ignored, cases = keeper_status(players, team, blocks, pitch, own_keeper=True)
     out = players.copy()
     out[ignored] = np.nan
-    team = np.asarray(team)
+    k0 = len(team)
+    if mode == "own_flip" and cases.any():
+        slots = np.flatnonzero(cases.any(axis=0))
+        extra = np.full((len(players), len(slots), players.shape[2]), np.nan, dtype=players.dtype)
+        for j, i in enumerate(slots):
+            extra[cases[:, i], j] = players[cases[:, i], i]
+            out[cases[:, i], i] = np.nan
+        out = np.concatenate([out, extra], axis=1)
+        team = np.concatenate([team, (1 - team[slots]).astype(team.dtype)])
     graded = np.zeros(len(players), dtype=bool)
     for a, b in blocks:
         graded[a:b] = True
     stats = {"seconds": ignored.any(axis=1).sum() / float(FPS),
-             "per_team": tuple(ignored[:, team == s].any(axis=1).sum() / float(FPS) for s in (0, 1)),
+             "per_team": tuple(ignored[:, team[:k0] == s].any(axis=1).sum() / float(FPS)
+                               for s in (0, 1)),
              "visible": tuple(visible[graded, s].mean() for s in (0, 1))}
-    return out, stats
+    return out, team, stats

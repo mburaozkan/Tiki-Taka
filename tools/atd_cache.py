@@ -67,8 +67,9 @@ def parse(source=DEFAULT_SOURCE, game=GAME, data_dir=None):
 def variant():
     """MTAH_VARIANT, e.g. "_kf": a suffix for every output built on fixed tracking (submissions
     via pipeline.run.write_submission, the v25 inputs cache); "kf" in it applies
-    pipeline.track_fix.fix_keepers to the tactical ATD of our match, "ki" applies
-    pipeline.track_fix.ignore_impostors (the user's rule). Empty: the raw ATD."""
+    pipeline.track_fix.fix_keepers to the tactical ATD of our match, "_ki" / "_ko" / "_kx"
+    apply pipeline.track_fix.ignore_impostors (the user's rule) in mode opponent / own / own_flip.
+    Empty: the raw ATD."""
     return os.environ.get("MTAH_VARIANT", "")
 
 
@@ -85,12 +86,13 @@ def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False, 
             arrays = {key: cached[key] for key in cached.files}
     if raw or source != "tactical" or game != GAME:
         return arrays
-    if "ki" in variant():
+    modes = {"_ki": "opponent", "_ko": "own", "_kx": "own_flip"}
+    if variant() in modes:
         from games import GAMES, half_video_blocks
         from pipeline.track_fix import ignore_impostors
         blocks = [(a, b + 1) for _, a, b in half_video_blocks(game)]
-        arrays["players"], _ = ignore_impostors(arrays["players"], arrays["team"], blocks,
-                                                GAMES[game]["pitch"])
+        arrays["players"], arrays["team"], _ = ignore_impostors(
+            arrays["players"], arrays["team"], blocks, GAMES[game]["pitch"], modes[variant()])
     if "kf" in variant():
         from games import GAMES, half_video_blocks
         from pipeline.track_fix import fix_keepers

@@ -145,7 +145,15 @@ def main():
         from pipeline.track_fix import keeper_status
         raw = load_arrays(raw=True)
         blk = [(x, y + 1) for _, x, y in half_video_blocks(GAME)]
-        visible, ignored = keeper_status(raw["players"], raw["team"], blk, s["pitch"])
+        mode = os.environ.get("MTAH_VARIANT", "")
+        cases = None
+        if mode in ("_ko", "_kx"):      # the team's own "keeper" is the one ignored
+            visible, ignored, cases = keeper_status(raw["players"], raw["team"], blk, s["pitch"],
+                                                    own_keeper=True)
+            if mode == "_ko":
+                cases = None            # the real keeper keeps the other team's colour
+        else:
+            visible, ignored = keeper_status(raw["players"], raw["team"], blk, s["pitch"])
         strip(ax, np.where(visible[a:b, 0], pm.H, pm.X), t, 0.23, "H keeper")
         strip(ax, np.where(visible[a:b, 1], pm.A, pm.X), t, 0.04, "A keeper")
     for i, (sa, sb, k) in enumerate(spells):
@@ -217,7 +225,7 @@ def main():
     if args.keepers:                # draw the raw tracking; ignored players as grey crosses
         draw_players, team = raw["players"], np.asarray(raw["team"])
     else:
-        draw_players, ignored, visible = s["players"], None, None
+        draw_players, ignored, visible, cases = s["players"], None, None, None
 
     slider = Slider(fig.add_axes([0.07, 0.04, 0.6, 0.025]), "t (s)", 0, t[-1], valinit=0)
 
@@ -226,8 +234,9 @@ def main():
         i = min(max(i, a), b - 1)
         xy = draw_players[i, :, :2] * np.array([length, width])
         skip = ignored[i] if ignored is not None else np.zeros(len(team), dtype=bool)
+        side_now = np.where(cases[i], 1 - team, team) if cases is not None else team
         for dots, side in ((home_dots, 0), (away_dots, 1)):
-            keep = (team == side) & ~skip & ~np.isnan(xy[:, 0])
+            keep = (side_now == side) & ~skip & ~np.isnan(xy[:, 0])
             dots.set_offsets(xy[keep].reshape(-1, 2))
         ignored_dots.set_offsets(xy[skip & ~np.isnan(xy[:, 0])].reshape(-1, 2))
         ball = s["ball"][i, :2] * np.array([length, width])

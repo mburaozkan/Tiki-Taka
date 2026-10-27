@@ -1670,6 +1670,27 @@ behind the line is ignored too (a known side effect of the rule).
 - Viewer `--keepers` (default on): strips for "H keeper" / "A keeper" visible, and on the pitch
   the raw tracking with the ignored players as grey crosses.
 
+**User: in these cases the other team's slot is the real keeper, so remove the team's own one.**
+`ignore_impostors(mode=...)`: "own" (`_ko`) ignores the defending team's own deepest player in the
+same cases; "own_flip" (`_kx`) does that and also gives the other team's slot (the real keeper) to
+the defending team. Synthetic: as intended; in "own" a striker >= 2 s behind the line removes the
+real keeper for that time (side effect). Viewer follows the mode (grey cross = removed; in `_kx`
+the real keeper is drawn in his corrected colour).
+
+| version | public spF1 / mF1 | full D | poss | #2 | #3 | #4 | #9 | #11 | #13 | #16 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| v29 | **0.697** / 0.882 | 37.4% | 249 | 0.27 | 0.61 | 0.97 | 0.62 | 0.31 (k2) | 0.54 | 0.94 |
+| v29_ki (other team's slot removed) | 0.640 / 0.886 | 39.2% | 235 | 0.33 | 0.55 | 0.76 | 0.47 | 0.38 | 0.09 | 0.85 |
+| **v29_ko (own removed)** | **0.684** / 0.881 | 38.0% | 259 | 0.34 | 0.55 | 0.96 | 0.62 | 0.31 (k2) | 0.57 | 0.94 |
+| v29_kx (own removed + real keeper flipped) | 0.653 / 0.883 | 38.7% | 244 | 0.35 | 0.61 | 0.76 | 0.47 | 0.38 | 0.09 | 0.73 |
+
+- v29_ko keeps #4 (0.96) and turns #2 into a hit, but keeps the wrong H inside #11: there the
+  removed "own" keeper is Athletic's ghost, and the real keeper still carries Barcelona's label.
+  Loses on #3 and #5 (−0.03 to −0.06). Net −0.013, near the noise of the public window (~0.01).
+- v29_kx, the tracking as the user describes it (both stretches right), gives #4's break and the
+  #9–#13 merge again. So once the keepers are right in both places, our models get #4's end and
+  #9–#13 wrong: in v29 the wrong keepers were hiding real model errors there.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
