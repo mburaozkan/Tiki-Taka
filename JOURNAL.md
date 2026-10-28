@@ -1864,6 +1864,10 @@ threshold hit is worth 0.0121 and a possession hit at all five 0.0606.
 - Lost: #9–#12 0.194 together (#10–#12 0.182, #9 0.012), #3 / #7 / #9 one threshold each (IoU
   just above 0.6). The spurious A (5.9 s, between #15 and #16, true D) costs through n_pred.
 
+Video for the user's check of #10–#12: `python tools/render_labels.py evaluation/results/v30.csv
+--possessions 10 12` (new option: cut by true possession number, 8 s before #10 to 5 s after #12)
+-> `data/cache/renders/v30_p10-12.mp4` (local only, 0.5 min).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
