@@ -2012,6 +2012,14 @@ nested −0.0013; caught 1–2 s 0.04 -> 0.05. **Negative.** From this tracking 
 start of a short possession is not learnable with these inputs; the turnover network (+0.0018)
 remains the only small gain.
 
+**Broadcast ball at the possession starts** (`tools/broadcast_contacts.py`, public window, flags
+only; broadcast mapped by `broadcast_align.npz`). Per true start, ±0.5 s: the broadcast is
+aligned at only 2 of 17 starts (#5, #15; 10% of the windows), **0% at #9–#13**, so it cannot help
+there (the TV is on something not alignable: replay, close-up). Tactical ball: seen 96%, a touch
+rule velocity peak at 71% of starts, one with the new team's player nearest within 3 m at 41%.
+#10 and #12: no peak within ±0.5 s; within ±1 s #10 has a peak with a Barcelona player nearest
+within 3 m (#12 a peak, Athletic's player nearest). Broadcast direction closed for #10 / #12.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
