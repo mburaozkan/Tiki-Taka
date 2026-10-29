@@ -1919,6 +1919,17 @@ rest (ball seen: 0.50 vs 0.77); only 8% have no signal (peak < 0.3). The pick is
 Touch level only; next: the chain on DFL (spellF1) with the extra rival touches. Keeper network
 idea parked (user: keep v30; a corrupted-DFL benchmark first if it comes back).
 
+**User (viewer, #10):** at the true start of #10 the red P(away touch) peaks, the blue does not.
+So the network does not see Barcelona's hit as a home touch at all; a rival-peak pick could not
+add it there.
+
+**Rival touches through v30's chain on DFL** (`pipeline/fixes.rival_touches`,
+`tools/eval_rival_touch.py`; second stage refine_b2 unchanged; the extra touches enter the margin
+vote, run vote, backdating and restart handover): every setting loses. Best min_p 0.4 / within
+0.3 s: 0.5702 (−0.0053, 1/6); nested the same; min_p 0.2 / 1 s −0.0151 (0/7). Split (min_p 0.4 /
+0.3 s): post-steps only −0.0039 (2/5), first stage only −0.0007 (1/4). More touches at the touch
+level (exchange recall 0.39 -> 0.55 at equal F1) do not help the spells. **Not adopted; v30 stays.**
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

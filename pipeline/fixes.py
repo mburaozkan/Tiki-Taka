@@ -25,6 +25,9 @@ restart handover changes the decoded path itself.
                     between and the ball loose (mean nearest-player distance >= `loose_m`):
                     that earlier touch was probably T's (a header, a flick), so the change moves
                     back to it (public #2, user 2026-10-28)
+  rival_touches     features with extra picked touches: a peak of the other team's own P(touch)
+                    >= `min_p` within `within_s` of a picked touch (touch_net.pick gives an H->A
+                    exchange one peak and one team; public #10, user 2026-10-29)
 """
 
 import numpy as np
@@ -194,4 +197,29 @@ def backdate(codes, f, p_max=0.8, max_s=6.0, loose_m=2.0, near_s=1.0):
         seg = out[t0:c]
         if np.all(np.isin(seg, (H, A))):
             out[t0:c] = codes[c]
+    return out
+
+
+def rival_touches(f, min_p=0.3, within_s=0.5, half=3):
+    """Copy of features f with the other team's touch added next to picked touches (see above);
+    touch and last_touch are rebuilt, everything else is shared."""
+    from pipeline.features import carry_last_touch
+    touch = np.asarray(f["touch"], dtype=np.float32).copy()
+    idx = np.flatnonzero(touch != 0)
+    k = int(within_s * FPS)
+    for side, key in ((1.0, "touch_p_home"), (-1.0, "touch_p_away")):
+        s = np.asarray(f[key], dtype=np.float64)
+        loc = s.copy()
+        for j in range(1, half + 1):
+            np.maximum(loc[j:], s[:-j], out=loc[j:])
+            np.maximum(loc[:-j], s[j:], out=loc[:-j])
+        for i in np.flatnonzero((s >= min_p) & (s == loc)):
+            near = idx[np.abs(idx - i) <= k]
+            if len(near) and not np.any(np.sign(touch[near]) == side) and touch[i] == 0:
+                touch[i] = side
+    out = dict(f)
+    out["touch"] = touch
+    dh = np.where(np.isnan(f["d_home"]), np.inf, f["d_home"])
+    da = np.where(np.isnan(f["d_away"]), np.inf, f["d_away"])
+    out["last_touch"] = carry_last_touch(touch, dh, da, np.asarray(f["gap_s"]))
     return out
