@@ -1875,6 +1875,31 @@ team input (blend + run vote); purple squares where backdating moved frames; run
 under the touches. With the default --sub it warns if the rebuild differs from v30.csv: it
 reproduces it on all live frames. For the user's check: `python tools/possession_view.py 10 12`.
 
+**User (viewer, 2026-10-29): the keeper problem persists.** It looks as if Barcelona's keeper plays
+while a Barcelona player runs at him; the overlay ignores both, yet the touch still counts as
+Barcelona's; it should be Athletic's. Athletic's own "keeper" stays still near the penalty area.
+Note: the viewer's `--keepers` overlay only draws the rule; v30 runs on the raw tracking, so
+nothing is removed from its inputs. `_kx` (own removed + other team's slot flipped) would flip
+every other-team slot behind the line, the pressing attacker too. New mode **`_kd`**
+(`ignore_impostors(mode="own_flip_deepest")`, `keeper_status(deepest_only=True)`): as `_kx`, but
+per frame only the deepest such slot (the real keeper) goes to the defending team; the attacker
+keeps his team. Synthetic (ghost still at 14 m, keeper slot at 2 m, attacker at 6 m): ghost removed,
+keeper flipped, attacker kept (`_kx`: attacker flipped too).
+
+v30's chain on it (`MTAH_VARIANT=_kd`: in_domain_team, then eval_backdate `--ours "p_max=0.7
+max_s=9 loose_m=1.5" --name v30` -> `v30_kd.csv`, valid): **public 0.6625 / 0.888** (v30 0.812 /
+0.901), 257 possessions, D 38.7%.
+
+| version | #1 | #2 | #4 | #9 | #11 | #12 | #13 | #16 |
+|---|---|---|---|---|---|---|---|---|
+| v30 | 0.96 | 0.96 | 0.97 | 0.62 | 0.31 | 0.13 | 0.78 | 0.94 |
+| v30_kd | 0.56 | 0.35 | 0.76 (k2) | 0.47 | 0.38 | MISS | 0.09 | 0.73 |
+
+Same as `_kx` / `_ki` before (#4 breaks, #9–#13 merge into one A, #16 starts late), plus #1–#2
+lose backdating's gain. Not adopted; v30 stays. Viewer: `$env:MTAH_VARIANT="_kd"` then
+`python tools/possession_view.py 9 13` (v30_kd, removed ghost = grey cross, flipped keeper in
+Athletic's colour).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
