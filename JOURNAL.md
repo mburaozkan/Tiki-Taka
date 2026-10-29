@@ -1936,6 +1936,22 @@ only), so the viewer got a "ball track" panel instead: ball speed, velocity chan
 frames (the old rule's signal, 2 m/s threshold dashed) and the old velocity-peak rule's touches,
 none of it from the network. To check whether the hit is in the ball data at all.
 
+**User (viewer, #10):** velocity change is above 2 m/s the whole time, yet no touch; both P(touch)
+drop there, P(home touch) to 0. Viewer: orange dots on every velocity peak the rule considers
+(with or without a player near), "to ball" zoomed to 15 m with the rule's 3 m reach dashed.
+
+**Short possessions on DFL** (v30's chain, 7 matches; best IoU with one predicted same-team spell):
+
+| true length | n | share | mean IoU | IoU >= 0.5 | any overlap |
+|---|---|---|---|---|---|
+| < 1 s | 82 | 4.1% | 0.03 | 0.02 | 0.26 |
+| 1–2 s | 203 | 10.2% | 0.07 | 0.04 | 0.22 |
+| 2–5 s | 490 | 24.6% | 0.28 | 0.28 | 0.50 |
+| > 5 s | 1215 | 61.1% | 0.67 | 0.74 | 0.92 |
+
+14% of possessions are under 2 s and v30 almost never catches them (2–4%); 2–5 s, a quarter of
+all, only 28%. #10 (0.8 s) and #12 (1.3 s) are this class, not a one-off.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

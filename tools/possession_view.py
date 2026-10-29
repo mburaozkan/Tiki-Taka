@@ -22,8 +22,10 @@ Left, sharing the time axis:
              touch-run vote as a band at the bottom
   ball track the ball itself, no network: speed and velocity change over +/-3 frames (m/s; dashed:
              the 2 m/s a touch needs), and the old velocity-peak rule's touches as ticks (nearest
-             player within 3 m at a peak). Our match has no true touches (Smart Tagging is phases)
-  ball       nearest home / away player to the ball (m); grey bands = ball not seen
+             player within 3 m at a peak; orange dots: every peak, with or without a player
+             near). Our match has no true touches (Smart Tagging is phases)
+  ball       nearest home / away player to the ball (m, up to 15; dashed: the rule's 3 m reach);
+             grey bands = ball not seen
   reaction   per team: push toward goal and compactness change over the next 4 s (the second
              stage's strongest new evidence)
   (keepers)  with --keepers (default; --no-keepers hides it): whether each team's keeper is
@@ -119,6 +121,18 @@ def ball_track(ball):
     dv = np.full(n, np.nan)
     dv[k:-k] = np.hypot(vx[2 * k:] - vx[:-2 * k], vy[2 * k:] - vy[:-2 * k])
     return np.hypot(vx, vy), dv
+
+
+def touch_peaks(dv):
+    """Frames where the velocity change is a local maximum over +/-TOUCH_K and >= TOUCH_DV_MS (the
+    rule's peak test in pipeline.features.touches, before it asks for a player within TOUCH_R_M)."""
+    k = features.TOUCH_K
+    ok = np.where(np.isnan(dv), -np.inf, dv)
+    local = ok.copy()
+    for shift in range(1, k + 1):
+        np.maximum(local[shift:], ok[:-shift], out=local[shift:])
+        np.maximum(local[:-shift], ok[shift:], out=local[:-shift])
+    return (ok >= features.TOUCH_DV_MS) & (ok == local)
 
 
 def strip(ax, codes, t, y, label, h=0.17):
@@ -241,6 +255,9 @@ def main():
     ax.axhline(features.TOUCH_DV_MS, color="#dd6b20", lw=0.5, ls="--")
     for side, color in ((1.0, COLORS[pm.H]), (-1.0, COLORS[pm.A])):
         ax.vlines(t[rule == side], 26, 30, color=color, lw=2)
+    peaks = touch_peaks(dv)[a:b]          # what the rule would call a touch if a player were near
+    ax.scatter(t[peaks], np.minimum(dv[a:b][peaks], 30), s=12, color="#dd6b20", zorder=3,
+               label="velocity peak")
     ax.set_ylim(0, 30)
     ax.set_ylabel("ball track")
     ax.legend(loc="upper left", fontsize=7, ncol=2)
@@ -250,9 +267,10 @@ def main():
     edges = np.flatnonzero(np.diff(np.concatenate(([0], unseen.astype(np.int8), [0]))))
     for ga, gb in zip(edges[::2], edges[1::2]):
         ax.axvspan(t[ga], t[gb - 1], color="#e2e8f0", lw=0)
-    ax.plot(t, np.minimum(f["d_home"][a:b], 30), color=COLORS[pm.H], lw=1, label="nearest home")
-    ax.plot(t, np.minimum(f["d_away"][a:b], 30), color=COLORS[pm.A], lw=1, label="nearest away")
-    ax.set_ylim(0, 30)
+    ax.plot(t, np.minimum(f["d_home"][a:b], 15), color=COLORS[pm.H], lw=1, label="nearest home")
+    ax.plot(t, np.minimum(f["d_away"][a:b], 15), color=COLORS[pm.A], lw=1, label="nearest away")
+    ax.axhline(features.TOUCH_R_M, color="grey", lw=0.5, ls="--")
+    ax.set_ylim(0, 15)
     ax.set_ylabel("to ball (m)")
     ax.legend(loc="upper right", fontsize=7, ncol=2)
 
