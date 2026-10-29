@@ -1900,6 +1900,25 @@ lose backdating's gain. Not adopted; v30 stays. Viewer: `$env:MTAH_VARIANT="_kd"
 `python tools/possession_view.py 9 13` (v30_kd, removed ghost = grey cross, flipped keeper in
 Athletic's colour).
 
+**#10 (0.8 s H, always missed), user from the video:** a Barcelona player hits the ball and it
+goes straight off an Athletic player: two touches, H then A. The viewer shows neither tick (only
+the correct A touch after). On DFL (7 held-out touch_net folds, teacher touches within 0.2 s):
+touches with an other-team touch within 0.5 s ("exchange", 1923) are caught 0.39 vs 0.60 for the
+rest (ball seen: 0.50 vs 0.77); only 8% have no signal (peak < 0.3). The pick is the loss:
+`touch_net.pick` takes one peak of P(home)+P(away) per +/-3 frames and gives it one team.
+`tools/eval_touch_pick.py`:
+
+| pick | P | R | F1 | exchange R |
+|---|---|---|---|---|
+| ours (0.7) | 0.91 | 0.58 | 0.71 | 0.39 |
+| per team 0.5 | 0.82 | 0.63 | 0.71 | 0.48 |
+| per team 0.35 | 0.72 | 0.68 | 0.70 | 0.57 |
+| **ours + rival's peak >= 0.3 within 0.5 s** | 0.85 | 0.61 | 0.71 | **0.55** |
+| ours + rival's peak >= 0.2 | 0.82 | 0.61 | 0.70 | 0.59 |
+
+Touch level only; next: the chain on DFL (spellF1) with the extra rival touches. Keeper network
+idea parked (user: keep v30; a corrupted-DFL benchmark first if it comes back).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
