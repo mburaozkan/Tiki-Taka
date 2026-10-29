@@ -1868,6 +1868,13 @@ Video for the user's check of #10–#12: `python tools/render_labels.py evaluati
 --possessions 10 12` (new option: cut by true possession number, 8 s before #10 to 5 s after #12)
 -> `data/cache/renders/v30_p10-12.mp4` (local only, 0.5 min).
 
+`tools/possession_view.py` now follows the submission: default `--sub` is v30.csv, and it rebuilds
+v30's chain with the submission's params (touch-run vote w 2 / min_n 2 / gap 2 s / hold 4 s /
+turnover; backdating p_max 0.7 / max_s 9 / loose 1.5). Team panel: v29 blend (dashed) and v30's
+team input (blend + run vote); purple squares where backdating moved frames; run vote as a band
+under the touches. With the default --sub it warns if the rebuild differs from v30.csv: it
+reproduces it on all live frames. For the user's check: `python tools/possession_view.py 10 12`.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

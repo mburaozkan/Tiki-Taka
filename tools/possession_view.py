@@ -2,19 +2,24 @@
 
     python tools/possession_view.py 9 12                  # true possessions #9 to #12 (+/- 5 s)
     python tools/possession_view.py 1 2 --pad 8
-    python tools/possession_view.py 14 15 --sub evaluation/results/v30_d1n_add.csv
+    python tools/possession_view.py 14 15 --sub evaluation/results/v30_d1n_add.csv   # dh1
     set MTAH_VARIANT=_kf  (PowerShell: $env:MTAH_VARIANT="_kf")  then as above: the keeper-fixed
-                          tracking (pipeline/track_fix.py) and v29_kf.csv
+                          tracking (pipeline/track_fix.py) and v30_kf.csv (build that first)
+
+Always the submission's chain and params (v30 = v29 + touch-run vote + backdating, Params below);
+with the default --sub it says so if the rebuild does not reproduce v30.csv.
 
 For the user's eyes only: the window opens locally and nothing about the data is printed (the
 match data must not reach a hosted LLM, JOURNAL.md 2026-10-23). Possessions are numbered as in
 tools/spell_table.py, and the time axis is in seconds from the window start.
 
 Left, sharing the time axis:
-  labels     truth (with the possession numbers), v29 (or --sub), and the hand path (D vs live)
+  labels     truth (with the possession numbers), v30 (or --sub), and the hand path (D vs live)
   team       P(home | live): first stage (v25 + touch-margin votes), second stage (v29's
-             refiner, 5 seeds), and their v29 blend (first + 0.5 x second, in log-odds)
-  touches    touch network P(home touch), P(away touch); the picked touches as ticks
+             refiner, 5 seeds), their v29 blend (first + 0.5 x second, in log-odds), and v30's
+             team input (that blend + the touch-run vote); purple squares = frames backdating moved
+  touches    touch network P(home touch), P(away touch); the picked touches as ticks; the
+             touch-run vote as a band at the bottom
   ball       nearest home / away player to the ball (m); grey bands = ball not seen
   reaction   per team: push toward goal and compactness change over the next 4 s (the second
              stage's strongest new evidence)
@@ -44,11 +49,13 @@ from eval_refine import stage1  # noqa: E402
 from report import PUBLIC_GT, FPS  # noqa: E402
 from pipeline import refine  # noqa: E402
 
-# Params
-SUB = os.path.join(ROOT, "evaluation", "results", "v29{}.csv".format(os.environ.get("MTAH_VARIANT", "")))
+# Params (the submission, v30 = v29 + touch-run vote + backdating; JOURNAL.md 2026-10-29)
+SUB = os.path.join(ROOT, "evaluation", "results", "v30{}.csv".format(os.environ.get("MTAH_VARIANT", "")))
 REFINE_TAG = "v29"
 SEEDS = 5
 ALPHA = 0.5             # v29's blend weight
+VOTE = {"w": 2.0, "min_n": 2, "max_gap_s": 2.0, "hold_s": 4.0, "turnover": 1}   # v29_tr_a
+BACKDATE = {"p_max": 0.7, "max_s": 9.0, "loose_m": 1.5}                          # v29_bd_b
 COLORS = {pm.H: "#2b6cb0", pm.A: "#c53030", pm.D: "#a0a0a0", pm.X: "#ffffff"}
 
 
@@ -78,9 +85,16 @@ def signals():
         p = np.clip(p, 1e-4, 1 - 1e-4)
         return np.log(p / (1 - p))
 
+    import eval_touch_run as tr
+    from pipeline import fixes
     ph1 = p1[:, 0] / np.maximum(p1[:, 0] + p1[:, 1], 1e-9)
     blend = 1.0 / (1.0 + np.exp(-(logit(ph1) + ALPHA * logit(p_ref))))
-    return {"hand": hand, "p1": ph1, "p_ref": p_ref, "blend": blend, "f": f, "cols": cols,
+    vote = tr.run_vote(f, VOTE)
+    p_sub = 1.0 / (1.0 + np.exp(-(logit(ph1) + ALPHA * logit(p_ref) + vote)))
+    base = tr.decode(hand, p1, p_ref, f, blk, vote)
+    codes = fixes.backdate(base, f, **BACKDATE)
+    return {"hand": hand, "p1": ph1, "p_ref": p_ref, "blend": blend, "vote": vote, "p_sub": p_sub,
+            "base": base, "codes": codes, "f": f, "cols": cols,
             "players": atd["players"], "team": atd["team"], "ball": atd["ball"],
             "pitch": (LENGTH, WIDTH)}
 
@@ -118,6 +132,10 @@ def main():
         sys.exit("possessions are numbered 1..{}".format(len(spells)))
     sub = pm.label_codes(pm.read_label_csv(args.sub))
     s = signals()
+    if args.sub == SUB:
+        live = np.isin(s["hand"], (pm.H, pm.A))
+        if not np.array_equal(s["codes"][live], sub[live]):
+            print("note: rebuilding v30 from the params here does not reproduce", args.sub)
 
     a = max(spells[args.first - 1][0] - int(args.pad * FPS), 0)
     b = min(spells[last - 1][1] + int(args.pad * FPS), len(gt))
@@ -167,18 +185,28 @@ def main():
     ax = axes[1]
     ax.plot(t, s["p1"][a:b], color="#718096", lw=1, label="first stage")
     ax.plot(t, s["p_ref"][a:b], color="#d69e2e", lw=1, label="second stage")
-    ax.plot(t, s["blend"][a:b], color="black", lw=1.6, label="v29 blend")
+    ax.plot(t, s["blend"][a:b], color="#a0aec0", lw=1, ls="--", label="v29 blend")
+    ax.plot(t, s["p_sub"][a:b], color="black", lw=1.6, label="+ run vote (v30)")
+    moved = np.flatnonzero(s["codes"][a:b] != s["base"][a:b])
+    if len(moved):
+        ax.scatter(t[moved], np.full(len(moved), 0.03), s=6, color="#805ad5", marker="s", lw=0,
+                   label="backdated")
     ax.axhline(0.5, color="grey", lw=0.5, ls="--")
     ax.set_ylim(0, 1)
     ax.set_ylabel("P(home | live)")
-    ax.legend(loc="upper right", fontsize=7, ncol=3)
+    ax.legend(loc="upper right", fontsize=7, ncol=5)
 
     ax = axes[2]
     ax.plot(t, f["touch_p_home"][a:b], color=COLORS[pm.H], lw=1, label="P(home touch)")
     ax.plot(t, f["touch_p_away"][a:b], color=COLORS[pm.A], lw=1, label="P(away touch)")
     touch = f["touch"][a:b]
+    vote = s["vote"][a:b]
     for side, color in ((1.0, COLORS[pm.H]), (-1.0, COLORS[pm.A])):
         ax.vlines(t[touch == side], 0.92, 1.0, color=color, lw=2)
+        ax.fill_between(t, 0, 0.06, where=np.sign(vote) == side, color=color, alpha=0.6, lw=0,
+                        step="post")
+    ax.text(0, 0.03, "run vote ", ha="right", va="center", fontsize=7,
+            transform=ax.get_yaxis_transform())
     ax.set_ylim(0, 1.02)
     ax.set_ylabel("touches")
     ax.legend(loc="upper left", fontsize=7, ncol=2)
@@ -245,7 +273,7 @@ def main():
         keepers = ("" if visible is None else "\nkeeper visible: H {}  A {}   (x = ignored)".format(
             "yes" if visible[i, 0] else "NO", "yes" if visible[i, 1] else "NO"))
         info.set_text("{:.1f} s   truth {}   ours {}   P(home) {:.2f}{}{}".format(
-            sec, letters[int(gt[i])], letters[int(sub[i])], s["blend"][i],
+            sec, letters[int(gt[i])], letters[int(sub[i])], s["p_sub"][i],
             "" if not np.isnan(ball[0]) else "   NO BALL", keepers))
         for c in cursors:
             c.set_xdata([sec, sec])
