@@ -117,6 +117,8 @@ def fix_keepers(players, team, blocks, pitch):
 # swapped keeper from the far side of the pitch, and is ignored (NaN). No visible keeper: no change.
 LINE_GAP_M = 2.0
 IGNORE_MIN_S = 2.0
+DUP_M = 1.0             # evidence: the other team's slot this close to the team's deepest player
+EVIDENCE_SHARE = 0.5
 
 
 def _goals(px, tracked, team, blocks, length):
@@ -135,13 +137,18 @@ def _goals(px, tracked, team, blocks, length):
     return goal
 
 
-def keeper_status(players, team, blocks, pitch, own_keeper=False, deepest_only=False):
+def keeper_status(players, team, blocks, pitch, own_keeper=False, deepest_only=False,
+                  evidence=False):
     """(visible (n, 2) bool per team, ignored (n, k) bool): see the comment above.
     own_keeper=True: the same cases, but the team's own "visible keeper" (its deepest player) is the one
     ignored, since there the other team's slot is the real keeper (user, 2026-10-27, #4); the
     third value is then the other team's slots in those cases (n, k), for own_flip.
     deepest_only: per frame only the deepest of those slots is a case (the real keeper); the
-    others are the team's attackers pressing him and keep their team (user, 2026-10-29)."""
+    others are the team's attackers pressing him and keep their team (user, 2026-10-29).
+    evidence: a case run is kept only if, on at least EVIDENCE_SHARE of it, the slot doubles the
+    team's deepest player (within DUP_M) or that player is a still ghost (STILL_M over STILL_S):
+    a tracking error, not an attacker behind the line (the rule fired on 1454 s, the measured
+    impostors are ~290 s; JOURNAL.md 2026-10-29)."""
     length, width = pitch
     team = np.asarray(team)
     px = players[:, :, 0].astype(np.float64) * length
@@ -149,6 +156,7 @@ def keeper_status(players, team, blocks, pitch, own_keeper=False, deepest_only=F
     tracked = ~np.isnan(px)
     goal = _goals(px, tracked, team, blocks, length)
     n, k = px.shape
+    still = _still(px, py, int(STILL_S * FPS)) if evidence else None
     visible = np.zeros((n, 2), dtype=bool)
     ignored = np.zeros((n, k), dtype=bool)
     own_ign = np.zeros((n, k), dtype=bool)
@@ -169,10 +177,21 @@ def keeper_status(players, team, blocks, pitch, own_keeper=False, deepest_only=F
             near = np.hypot(depth, central) <= EXTEND_M
         behind = visible[:, side][:, None] & (depth < d2[:, None]) & near & (team != side)[None, :]
         side_cases = np.zeros((n, k), dtype=bool)
+        if evidence:
+            rows = np.arange(n)
+            ghost = still[rows, deepest] & np.isfinite(d1)
         for i in np.flatnonzero(team != side):
             for s, e in _runs(behind[:, i]):
-                if e - s >= IGNORE_MIN_S * FPS:
-                    side_cases[s:e, i] = True
+                if e - s < IGNORE_MIN_S * FPS:
+                    continue
+                if evidence:
+                    dj = deepest[s:e]
+                    with np.errstate(invalid="ignore"):
+                        dup = np.hypot(px[s:e, i] - px[rows[s:e], dj],
+                                       py[s:e, i] - py[rows[s:e], dj]) <= DUP_M
+                    if np.mean(dup | ghost[s:e]) < EVIDENCE_SHARE:
+                        continue
+                side_cases[s:e, i] = True
         if deepest_only:
             rows = np.flatnonzero(side_cases.any(axis=1))
             pick = np.argmin(np.where(side_cases[rows], depth[rows], np.inf), axis=1)
@@ -192,18 +211,22 @@ def ignore_impostors(players, team, blocks, pitch, mode="opponent"):
     slot behind the line is ignored (NaN); "own": the team's own deepest player is ignored instead;
     "own_flip": as "own", and the other team's slot is moved to a new slot of the defending team
     (the real keeper with his right team); "own_flip_deepest": as "own_flip", but only the deepest
-    such slot per frame is moved (an attacker pressing the keeper keeps his team)."""
+    such slot per frame is moved (an attacker pressing the keeper keeps his team);
+    "own_flip_evidence": as "own_flip_deepest", only where keeper_status(evidence=True) finds a
+    doubled or ghost keeper."""
     team = np.asarray(team)
     if mode == "opponent":
         visible, ignored = keeper_status(players, team, blocks, pitch)
         cases = None
     else:
-        visible, ignored, cases = keeper_status(players, team, blocks, pitch, own_keeper=True,
-                                                deepest_only=mode == "own_flip_deepest")
+        visible, ignored, cases = keeper_status(
+            players, team, blocks, pitch, own_keeper=True,
+            deepest_only=mode in ("own_flip_deepest", "own_flip_evidence"),
+            evidence=mode == "own_flip_evidence")
     out = players.copy()
     out[ignored] = np.nan
     k0 = len(team)
-    if mode in ("own_flip", "own_flip_deepest") and cases.any():
+    if mode in ("own_flip", "own_flip_deepest", "own_flip_evidence") and cases.any():
         slots = np.flatnonzero(cases.any(axis=0))
         extra = np.full((len(players), len(slots), players.shape[2]), np.nan, dtype=players.dtype)
         for j, i in enumerate(slots):

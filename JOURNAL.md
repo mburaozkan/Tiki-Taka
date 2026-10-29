@@ -1974,6 +1974,31 @@ peak (beyond the cap, worse). Short possessions barely move: caught 1–2 s 0.04
 A small DFL gain (about backdating's size), public −0.012 from one threshold crossing. Candidate
 only; v30 stays.
 
+**Keeper right without losing points (user: keep v30).** Variant rebuilds recompute every input
+(hand path, columns, touches, second stage) from the changed tracking, so first a **local splice**
+(`tools/eval_keeper_splice.py`): v30's inputs everywhere, the `_kd` inputs only where the rule
+fires (+ margin), then v30's chain once. The rule fires on **1454 s** (Athletic's goal 599 s,
+Barcelona's 871 s) against ~290 s of measured impostors.
+
+| splice (_kd) | public spF1 / mF1 | changed possessions |
+|---|---|---|
+| both goals, margin 0–8 s | 0.642–0.663 / 0.886–0.888 | as v30_kd |
+| Athletic's goal only | 0.774 / **0.911** | #9 0.62 -> 0.47, #11 0.31 -> 0.38, #12 0.13 -> MISS, #13 0.78 -> 0.09 |
+| Barcelona's goal only | 0.686–0.706 / 0.876–0.878 | #1 0.96 -> 0.56, #2 0.96 -> 0.35, #4 0.97 -> 0.76 (k2), #16 0.94 -> 0.73 |
+
+- Barcelona's goal: the rule is mostly wrong there (871 s), and that is what broke #1, #2, #4, #16.
+- Athletic's goal (the user's scene): with the keeper right one A runs #9–#13; v30's wrong keeper
+  made an H spell near #12 that split it. The cost is the short-possession problem (#10, #12 unseen).
+
+**Evidence gate** (`keeper_status(evidence=True)`, mode `own_flip_evidence`, variant **`_ke`**): a
+case run counts only if on >= 50% of it the slot is within 1 m of the team's deepest player (a
+doubled keeper) or that player is still (a ghost). The rule then fires on **63.7 s** (Athletic's
+goal 40.1 s, Barcelona's 23.6 s). Splice: Barcelona's goal changes nothing (0.00%, #1/#2/#4/#16
+as v30); Athletic's goal 0.28% of live frames, public **0.774 / 0.911** (v30 0.812 / 0.901),
+the same #9–#13 change. Plus turnover switches (w 10 / 19): 0.761, no help. **v30_ke.csv** written
+(splice, margin 0, both goals) for the user's check. Not adopted: −0.038 spF1 on public for
++0.010 mF1; v30 stays.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

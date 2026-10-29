@@ -202,9 +202,11 @@ def main():
         blk = [(x, y + 1) for _, x, y in half_video_blocks(GAME)]
         mode = os.environ.get("MTAH_VARIANT", "")
         cases = None
-        if mode in ("_ko", "_kx", "_kd"):   # the team's own "keeper" is the one ignored
+        if mode in ("_ko", "_kx", "_kd", "_ke"):   # the team's own "keeper" is the one ignored
             visible, ignored, cases = keeper_status(raw["players"], raw["team"], blk, s["pitch"],
-                                                    own_keeper=True, deepest_only=mode == "_kd")
+                                                    own_keeper=True,
+                                                    deepest_only=mode in ("_kd", "_ke"),
+                                                    evidence=mode == "_ke")
             if mode == "_ko":
                 cases = None            # the real keeper keeps the other team's colour
         else:
