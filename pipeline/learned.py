@@ -215,14 +215,15 @@ def decode_probs(prob, blocks, costs=DECODER, floor=1e-4):
     return codes
 
 
-def decode_hybrid(hand_codes, prob, blocks, switch, floor=1e-4):
+def decode_hybrid(hand_codes, prob, blocks, switch, floor=1e-4, discount=None):
     """Hand model decides D vs live, the learned model decides the team.
 
     Keeps the hand path's D frames (and X outside the blocks). Inside every maximal live stretch
     of the hand path, a two-state Viterbi over log P(H) and log P(A), renormalised to H + A = 1,
     with `switch` (log-prob units) per change of team. The learned model's own D call is not
     used: DFL's ball is frozen while dead, so it learned that a still ball means a stoppage, which
-    does not hold on our match (JOURNAL.md, 2026-10-24).
+    does not hold on our match (JOURNAL.md, 2026-10-24). discount: optional (n, 2) per-frame
+    reduction of the switch cost into H / into A (decode.viterbi).
     """
     out = hand_codes.copy()
     live = (hand_codes == H) | (hand_codes == A)
@@ -236,6 +237,7 @@ def decode_hybrid(hand_codes, prob, blocks, switch, floor=1e-4):
     for a, b in blocks:
         edges = np.diff(np.concatenate(([0], live[a:b].astype(np.int8), [0])))
         for s0, e0 in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
-            out[a + s0:a + e0] = viterbi(scores[a + s0:a + e0], c)
+            out[a + s0:a + e0] = viterbi(scores[a + s0:a + e0], c,
+                                         None if discount is None else discount[a + s0:a + e0])
     return out
 

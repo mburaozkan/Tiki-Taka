@@ -1952,6 +1952,28 @@ drop there, P(home touch) to 0. Viewer: orange dots on every velocity peak the r
 14% of possessions are under 2 s and v30 almost never catches them (2–4%); 2–5 s, a quarter of
 all, only 28%. #10 (0.8 s) and #12 (1.3 s) are this class, not a one-off.
 
+**Turnover network as cheaper switches under v30** (`tools/eval_turnover_switch.py`; held-out
+turnover_net per DFL match; `learned.decode_hybrid(discount=...)`, default None = v30 unchanged).
+Switch into T costs 20 − min(w × clip((peak P(change to T) − p0) / (1 − p0)), 19), peak over
+±half_s. DFL reference rebuilds v30 exactly (0.5755).
+
+| setting | DFL | vs v30 | folds |
+|---|---|---|---|
+| **w 19, p0 0, half 0.2 s** | **0.5773** | **+0.0018** | **6/1** |
+| w 19, p0 0, half 0.5 s | 0.5766 | +0.0010 | 5/1 |
+| w 19, p0 0, half 0.1 s | 0.5770 | +0.0014 | 4/3 |
+| w 25 / 40 / 80, half 0.1 s | 0.5768 / 0.5760 / 0.5756 | | |
+| w 19, p0 0.3 / 0.5 | 0.5749–0.5750 | −0.0006 | |
+| w 5–10 | 0.5751–0.5757 | ~0 | |
+
+Nested +0.0018 (6/1) on the first grid, +0.0014 (5/2) on the extended one; w 19 / half 0.2 is the
+peak (beyond the cap, worse). Short possessions barely move: caught 1–2 s 0.04 -> 0.06, < 1 s and
+2–5 s unchanged. **v30_to** (`--ours "w=19 p0=0 half_s=0.2"`, valid, 0.16% of live frames differ):
+**public 0.800 / 0.900** (v30 0.812 / 0.901), 266 possessions; per possession as v30 except #5
+0.72 -> 0.69 (below the 0.7 threshold) and #4 end +0.2 -> +0.3; #10 still missed, same spurious A.
+A small DFL gain (about backdating's size), public −0.012 from one threshold crossing. Candidate
+only; v30 stays.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
