@@ -40,6 +40,7 @@ VERSIONS = 2            # gap patterns per training match
 TEST_SEED = 100
 TOLS_S = (0.2, 0.5)
 THRESHOLDS = (0.3, 0.5, 0.7)
+SHORT_S = 3.0           # --target short: possession starts of spells shorter than this
 
 
 def changes(lab):
@@ -49,12 +50,28 @@ def changes(lab):
     return f, (lab[f] == dd.A).astype(np.int8)
 
 
+def short_changes(lab, max_s=None):
+    """changes() limited to possessions shorter than max_s (SHORT_S): where they start."""
+    max_s = SHORT_S if max_s is None else max_s
+    f, t = changes(lab)
+    keep = []
+    for i in f:
+        j = i
+        while j < len(lab) and lab[j] == lab[i]:
+            j += 1
+        keep.append(j - i < max_s * dd.FPS)
+    keep = np.array(keep, dtype=bool)
+    return f[keep], t[keep]
+
+
 def prepared(game, seed, target="touch"):
     """Ball made to look like ours for one match, plus the target events (touches, or possession
     changes for the turnover network)."""
     d = dd.load(game)
     ball = dd.prepare_ball(d, seed)        # dead ball animated, blurred, our gaps
-    frames, teams = (tl.load(game)[:2] if target == "touch" else changes(d["controlled"]))
+    frames, teams = (tl.load(game)[:2] if target == "touch" else
+                     short_changes(d["controlled"]) if target == "short" else
+                     changes(d["controlled"]))
     valid = d["period"] > 0
     return d, ball, frames, teams, valid
 
@@ -107,7 +124,7 @@ def main():
     parser.add_argument("--folds", type=int, default=len(dd.GAMES))
     parser.add_argument("--epochs", type=int, default=tn.EPOCHS)
     parser.add_argument("--final", action="store_true", help="also train on all 7 and save")
-    parser.add_argument("--target", choices=("touch", "turnover"), default="touch",
+    parser.add_argument("--target", choices=("touch", "turnover", "short"), default="touch",
                         help="touches (touch_net_*) or controlled possession changes "
                              "(turnover_net_*)")
     parser.add_argument("--warp", type=float, default=1.0,
@@ -118,7 +135,7 @@ def main():
     if args.warp != 1.0:
         dd.set_warp(args.warp)
         MODEL_DIR = os.path.join(MODEL_DIR, "warp{:g}".format(args.warp))
-    stem = "touch_net" if args.target == "touch" else "turnover_net"
+    stem = {"touch": "touch_net", "turnover": "turnover_net", "short": "short_net"}[args.target]
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     print("building inputs ...", flush=True)

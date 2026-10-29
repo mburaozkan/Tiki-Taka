@@ -1999,6 +1999,19 @@ the same #9–#13 change. Plus turnover switches (w 10 / 19): 0.761, no help. **
 (splice, margin 0, both goals) for the user's check. Not adopted: −0.038 spF1 on public for
 +0.010 mF1; v30 stays.
 
+**User: #12 is the same story as #10** (Athletic's keeper kicks, a Barcelona player heads it, it
+touches an Athletic player, then Barcelona has it): a Barcelona contact straight into an
+Athletic one, never seen. Solving it would solve #9–#13.
+
+**Short-possession network** (`train_touch.py --target short`: touch_net architecture and inputs,
+target = starts of controlled possessions shorter than 3 s (`SHORT_S`), 7 held-out folds +
+`short_net_all.pt`). Held-out, within 0.5 s of a short start: **net@0.3 P 0.07 R 0.04**, @0.5
+0.09 / 0.03 (the touch rule: P 0.01, R 0.30). It does not learn them. As cheaper switches in v30's
+chain (`eval_turnover_switch.py --net short_net`): w 10 +0.0001 (1/0), w 19 −0.0006, w 40 −0.0013;
+nested −0.0013; caught 1–2 s 0.04 -> 0.05. **Negative.** From this tracking (our ball pattern) the
+start of a short possession is not learnable with these inputs; the turnover network (+0.0018)
+remains the only small gain.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

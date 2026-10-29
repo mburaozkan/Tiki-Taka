@@ -4,6 +4,7 @@ Aggregate only.
 
     python tools/eval_turnover_switch.py
     python tools/eval_turnover_switch.py --ours "w=10 p0=0.3 half_s=0.2" --name v30_to
+    python tools/eval_turnover_switch.py --net short_net     # starts of possessions < 3 s
 
 Where the network says the ball changes to team T, the H <-> A switch into T costs
 switch - w x clip((peak P - p0) / (1 - p0), 0, 1) (peak over +/- half_s, at least 1 left), so a
@@ -38,6 +39,7 @@ MODEL_DIR = os.path.join(dd.DATA_DIR, "cache", "models")
 BACKDATE = {"p_max": 0.7, "max_s": 9.0, "loose_m": 1.5}
 GRID = {"w": (5.0, 10.0, 15.0, 19.0), "p0": (0.0, 0.3, 0.5), "half_s": (0.2, 0.5)}
 LENGTHS = ((0, 1), (1, 2), (2, 5), (5, np.inf))
+NET = "turnover_net"    # --net short_net: train_touch.py --target short
 
 
 def turnover_prob(players, ball, team, pitch, model):
@@ -104,11 +106,12 @@ def dfl():
     for g in dd.GAMES:
         d = dd.load(g)
         f = match_features(g, test_seed(g))
-        cache = os.path.join(dd.CACHE, "turn_{}_{}.npy".format(g, test_seed(g)))
+        cache = os.path.join(dd.CACHE, "{}_{}_{}.npy".format(
+            "turn" if NET == "turnover_net" else NET, g, test_seed(g)))
         if os.path.isfile(cache):
             turn = np.load(cache)
         else:
-            model = touch_net.load(os.path.join(MODEL_DIR, "turnover_net_{}.pt".format(g)))
+            model = touch_net.load(os.path.join(MODEL_DIR, "{}_{}.pt".format(NET, g)))
             turn = turnover_prob(d["players"], dd.prepare_ball(d, test_seed(g)), d["team"],
                                  dd.PITCH, model)
             np.save(cache, turn)
@@ -158,7 +161,7 @@ def ours(text, name):
         prob = c["prob"]
     hand, f = s["hand"], s["f"]
     blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]
-    model = touch_net.load(os.path.join(MODEL_DIR, "turnover_net_all.pt"))
+    model = touch_net.load(os.path.join(MODEL_DIR, "{}_all.pt".format(NET)))
     turn = turnover_prob(s["players"], s["ball"], s["team"], s["pitch"], model)
     base = v30(hand, prob, s["p_ref"], f, blk)
     codes = v30(hand, prob, s["p_ref"], f, blk, discount(turn, **kw))
@@ -172,10 +175,13 @@ def ours(text, name):
 
 
 def main():
+    global NET
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ours", help='"w=.. p0=.. half_s=.."')
     parser.add_argument("--name", default="v30_to")
+    parser.add_argument("--net", default=NET, choices=("turnover_net", "short_net"))
     args = parser.parse_args()
+    NET = args.net
     if args.ours:
         ours(args.ours, args.name)
     else:
