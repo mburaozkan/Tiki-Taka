@@ -1930,6 +1930,12 @@ vote, run vote, backdating and restart handover): every setting loses. Best min_
 0.3 s): post-steps only −0.0039 (2/5), first stage only −0.0007 (1/4). More touches at the touch
 level (exchange recall 0.39 -> 0.55 at equal F1) do not help the spells. **Not adopted; v30 stays.**
 
+**User (viewer, #10):** both teams close to the ball, ball tracked, players right; the ball track
+probably never shows the Barcelona hit. Our match has no true touches (Smart Tagging is phases
+only), so the viewer got a "ball track" panel instead: ball speed, velocity change over +/-3
+frames (the old rule's signal, 2 m/s threshold dashed) and the old velocity-peak rule's touches,
+none of it from the network. To check whether the hit is in the ball data at all.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

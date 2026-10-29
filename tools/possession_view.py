@@ -20,6 +20,9 @@ Left, sharing the time axis:
              team input (that blend + the touch-run vote); purple squares = frames backdating moved
   touches    touch network P(home touch), P(away touch); the picked touches as ticks; the
              touch-run vote as a band at the bottom
+  ball track the ball itself, no network: speed and velocity change over +/-3 frames (m/s; dashed:
+             the 2 m/s a touch needs), and the old velocity-peak rule's touches as ticks (nearest
+             player within 3 m at a peak). Our match has no true touches (Smart Tagging is phases)
   ball       nearest home / away player to the ball (m); grey bands = ball not seen
   reaction   per team: push toward goal and compactness change over the next 4 s (the second
              stage's strongest new evidence)
@@ -48,6 +51,7 @@ import in_domain_team as idt  # noqa: E402
 from eval_refine import stage1  # noqa: E402
 from report import PUBLIC_GT, FPS  # noqa: E402
 from pipeline import refine  # noqa: E402
+import pipeline.features as features  # noqa: E402
 
 # Params (the submission, v30 = v29 + touch-run vote + backdating; JOURNAL.md 2026-10-29)
 SUB = os.path.join(ROOT, "evaluation", "results", "v30{}.csv".format(os.environ.get("MTAH_VARIANT", "")))
@@ -99,6 +103,24 @@ def signals():
             "pitch": (LENGTH, WIDTH)}
 
 
+def ball_track(ball):
+    """Ball speed and the velocity change over +/-TOUCH_K frames (m/s), as pipeline.features.touches
+    sees them: the raw evidence of a touch, without the network."""
+    n = len(ball)
+    x = features.window_mean(ball[:, 0].astype(np.float64) * features.LENGTH, features.TOUCH_SMOOTH)
+    y = features.window_mean(ball[:, 1].astype(np.float64) * features.WIDTH, features.TOUCH_SMOOTH)
+    seen = ~np.isnan(ball[:, 0])
+    x[~seen], y[~seen] = np.nan, np.nan
+    vx, vy = np.full(n, np.nan), np.full(n, np.nan)
+    vx[1:-1], vy[1:-1] = (x[2:] - x[:-2]) * FPS / 2.0, (y[2:] - y[:-2]) * FPS / 2.0
+    fast = np.hypot(vx, vy) > features.TOUCH_MAX_MS
+    vx[fast], vy[fast] = np.nan, np.nan
+    k = features.TOUCH_K
+    dv = np.full(n, np.nan)
+    dv[k:-k] = np.hypot(vx[2 * k:] - vx[:-2 * k], vy[2 * k:] - vy[:-2 * k])
+    return np.hypot(vx, vy), dv
+
+
 def strip(ax, codes, t, y, label, h=0.17):
     """One coloured label bar at height y."""
     edges = np.flatnonzero(np.diff(codes)) + 1
@@ -145,10 +167,10 @@ def main():
     f = s["f"]
 
     fig = plt.figure(figsize=(16, 9))
-    grid = fig.add_gridspec(5, 2, width_ratios=(2.2, 1), height_ratios=(1.1, 1.3, 1, 1, 1),
+    grid = fig.add_gridspec(6, 2, width_ratios=(2.2, 1), height_ratios=(1.1, 1.3, 1, 1, 1, 1),
                             left=0.07, right=0.98, top=0.95, bottom=0.12, hspace=0.25, wspace=0.12)
     axes = [fig.add_subplot(grid[0, 0])]
-    axes += [fig.add_subplot(grid[i, 0], sharex=axes[0]) for i in range(1, 5)]
+    axes += [fig.add_subplot(grid[i, 0], sharex=axes[0]) for i in range(1, 6)]
     pitch_ax = fig.add_subplot(grid[:, 1])
     fig.suptitle("public possessions #{}-#{}  ({} vs truth)".format(
         args.first, last, os.path.splitext(os.path.basename(args.sub))[0]))
@@ -212,6 +234,18 @@ def main():
     ax.legend(loc="upper left", fontsize=7, ncol=2)
 
     ax = axes[3]
+    speed, dv = ball_track(s["ball"])
+    rule = features.touches(s["ball"], f["d_home"], f["d_away"], f["gap_s"])[0][a:b]
+    ax.plot(t, np.minimum(speed[a:b], 30), color="#4a5568", lw=1, label="ball speed (m/s)")
+    ax.plot(t, np.minimum(dv[a:b], 30), color="#dd6b20", lw=1, label="velocity change (m/s)")
+    ax.axhline(features.TOUCH_DV_MS, color="#dd6b20", lw=0.5, ls="--")
+    for side, color in ((1.0, COLORS[pm.H]), (-1.0, COLORS[pm.A])):
+        ax.vlines(t[rule == side], 26, 30, color=color, lw=2)
+    ax.set_ylim(0, 30)
+    ax.set_ylabel("ball track")
+    ax.legend(loc="upper left", fontsize=7, ncol=2)
+
+    ax = axes[4]
     unseen = ~np.asarray(f["ball_seen"][a:b], dtype=bool)
     edges = np.flatnonzero(np.diff(np.concatenate(([0], unseen.astype(np.int8), [0]))))
     for ga, gb in zip(edges[::2], edges[1::2]):
@@ -222,7 +256,7 @@ def main():
     ax.set_ylabel("to ball (m)")
     ax.legend(loc="upper right", fontsize=7, ncol=2)
 
-    ax = axes[4]
+    ax = axes[5]
     cols = s["cols"]
     for side, color in (("home", COLORS[pm.H]), ("away", COLORS[pm.A])):
         for name, ls in (("push", "-"), ("compact", ":")):
