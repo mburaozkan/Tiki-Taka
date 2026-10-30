@@ -2107,6 +2107,29 @@ stoppages >= 2 s, numbered S1–S4 (S4 is the one before #17), against DFL's 705
 - DFL's head misses (< 0.1) are 2–5% at every ball-seen share, so more gaps in training would
   not reach S4.
 
+**Ball-out rule (user's idea):** S4 is a shot that goes out; the players run back while the
+keeper sets up the goal kick, so the ball is seen and out of play. `eval_dead_v30.py`:
+`--protect` keeps the remove gate off every D stretch in which the ball is seen out of play
+(phantom stretches on DFL have ball_out 0.00); `--hold S` makes D from the ball going out until
+the first touch with it back on the pitch, at most S s.
+
+| | DFL | vs v30 | folds | live called D | public spF1 / mF1 | full D | poss |
+|---|---|---|---|---|---|---|---|
+| v30_dh | 0.6149 | +0.039 | 7/0 | 13.1% | 0.812 / 0.917 | 48.8% | 243 |
+| gate 0.1, no protect | 0.6284 | +0.053 | 7/0 | 10.5% | 0.776 / 0.850 | 47.6% | 235 |
+| **gate 0.1 + protect (v30_dhgp01)** | **0.6295** | **+0.054** | **7/0** | 10.5% | **0.812 / 0.917** | 48.0% | 238 |
+| gate 0.3 + protect | 0.6292 | +0.054 | 7/0 | 10.1% | 0.812 / 0.917 | 47.5% | 233 |
+| nested (protect, T grid) | 0.6278 | +0.052 | 7/0 | | | | |
+| hold 60 s, no gate | 0.6030 | +0.027 | 6/1 | 15.3% | 0.812 / 0.919 | 50.4% | 244 |
+| gate 0.3 + protect + hold 60 | 0.6182 | +0.043 | 6/1 | 12.2% | 0.812 / 0.919 | 49.2% | 235 |
+
+- Protect brings the public window back exactly (per possession as v30_dh; #16 0.94, #17 0.90)
+  and is slightly better on DFL too. All T from 0.05 to 0.5 win 7/0 with it.
+- Hold costs 0.011–0.012 on DFL (restarts called late: live called D up) for +0.002 public mF1:
+  rejected.
+- **v30_dhgp01** (`--ours 0.5 0.5 25 --gate 0.1 0 --protect`, valid): DFL +0.054 over v30,
+  public unchanged, 0.85% of the match goes D -> live. New candidate; v30 stays the submission.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

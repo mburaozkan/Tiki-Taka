@@ -4,6 +4,7 @@
     python tools/eval_dead_v30.py --ours 0.5 0.5 25 --name v30_dh   # our match, public check
     python tools/eval_dead_v30.py --gate                          # DFL, + remove gate grid
     python tools/eval_dead_v30.py --ours 0.5 0.5 25 --gate 0.3 0 --name v30_dhg
+    python tools/eval_dead_v30.py --gate --protect --hold 60       # + ball-out rule
 
 v30 = v29's chain + touch-run vote + backdating (tools/eval_backdate.py). Here the hand path's
 D vs live is first extended by the dead-ball head (tools/eval_dead_refine.py, held-out
@@ -11,6 +12,9 @@ probabilities from data/cache/dfl/dead_d1n.npz, deployed models models/dead_d1n_
 v30's chain runs unchanged. Per setting: mean spellF1, delta vs v30, folds won / lost; nested.
 Remove gate (--gate): afterwards every D stretch whose mean head P(dead) is below T (and, if
 MAX_S > 0, no longer than MAX_S seconds) is made live, so the team decoder fills it.
+Ball-out rule: --protect keeps the gate off every D stretch in which the ball is seen out of play;
+--hold S makes the frames D from the ball going out until the first touch after it is back on the
+pitch (the restart), at most S seconds.
 """
 
 import argparse
@@ -44,14 +48,33 @@ GATE_T = (0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
 GATE_MAX_S = (0.0, 10.0, 20.0)
 
 
-def remove_gate(hand2, pdead, blk, t, max_s, fps):
-    """Make live every D stretch of hand2 with mean P(dead) < t (and length <= max_s if max_s > 0)."""
+def out_hold(hand2, f, blk, hold_s, fps):
+    """D from each ball-out start until the first touch with the ball back in, at most hold_s."""
+    out = hand2.copy()
+    ball_out = np.asarray(f["ball_out"]) > 0
+    touch = np.asarray(f["touch"]) != 0
+    for a0, b0 in blk:
+        e = np.diff(np.concatenate(([0], ball_out[a0:b0].astype(np.int8), [0])))
+        for s0, e0 in zip(np.flatnonzero(e == 1), np.flatnonzero(e == -1)):
+            a, back = a0 + s0, a0 + e0
+            stop = min(b0, a + int(hold_s * fps))
+            nxt = np.flatnonzero(touch[back:stop] & ~ball_out[back:stop])
+            end = back + nxt[0] if len(nxt) else stop
+            out[a:end] = D
+    return out
+
+
+def remove_gate(hand2, pdead, blk, t, max_s, fps, protect=None):
+    """Make live every D stretch of hand2 with mean P(dead) < t (and length <= max_s if max_s > 0);
+    never one that holds a protect frame."""
     out = hand2.copy()
     for a0, b0 in blk:
         dead = (hand2[a0:b0] == D).astype(np.int8)
         e = np.diff(np.concatenate(([0], dead, [0])))
         for s0, e0 in zip(np.flatnonzero(e == 1), np.flatnonzero(e == -1)):
             a, b = a0 + s0, a0 + e0
+            if protect is not None and protect[a:b].any():
+                continue
             if np.mean(pdead[a:b]) < t and (max_s <= 0 or (b - a) / fps <= max_s):
                 out[a:b] = H                # any live code: decode_hybrid re-decides the team
     return out
@@ -61,7 +84,14 @@ def chain(hand, p1, p_ref, f, blk, vote):
     return fixes.backdate(tr.decode(hand, p1, p_ref, f, blk, vote), f, **BACKDATE)
 
 
-def dfl(gate):
+def out_rule(hand2, f, blk, args):
+    """(hand2 with the hold applied, protect mask or None)."""
+    if args.hold:
+        hand2 = out_hold(hand2, f, blk, args.hold, dd.FPS)
+    return hand2, (np.asarray(f["ball_out"]) > 0 if args.protect else None)
+
+
+def dfl(gate, args):
     data = v25_inputs()
     with np.load(os.path.join(dd.CACHE, "refine_{}.npz".format(tr.TEAM_TAG))) as c:
         team = {k: c[k] for k in c.files}
@@ -86,7 +116,8 @@ def dfl(gate):
     hand2 = {}
     for g in dd.GAMES:
         hand = data[g][1]
-        hand2[g] = constrain(hand, refine.decode_dead(hand, pdead[g], ctx[g][1], *SETTING), MODE)
+        hand2[g] = out_rule(constrain(hand, refine.decode_dead(hand, pdead[g], ctx[g][1], *SETTING),
+                                      MODE), ctx[g][0], ctx[g][1], args)
     if gate:
         grid = [(None, None)] + list(itertools.product(GATE_T, GATE_MAX_S))
     else:
@@ -96,7 +127,8 @@ def dfl(gate):
         for g in dd.GAMES:
             f, blk, p1, p_ref, vote = ctx[g]
             if gate:
-                h = hand2[g] if key[0] is None else remove_gate(hand2[g], pdead[g], blk, *key, dd.FPS)
+                h = hand2[g][0] if key[0] is None else remove_gate(hand2[g][0], pdead[g], blk, *key,
+                                                                   dd.FPS, hand2[g][1])
             else:
                 hand = data[g][1]
                 h = constrain(hand, refine.decode_dead(hand, pdead[g], blk, *key), MODE)
@@ -121,7 +153,7 @@ def dfl(gate):
             key, 100 * e0[0] / e0[1], 100 * e[0] / e[1], 100 * e0[2] / e0[3], 100 * e[2] / e[3]))
 
 
-def ours(beta, gamma, cost, name, gate=None):
+def ours(beta, gamma, cost, name, gate=None, args=None):
     from games import GAME, GAMES, half_video_blocks
     from pipeline.run import write_submission, RESULTS_DIR
     from report import brief_line, PUBLIC_GT
@@ -141,9 +173,13 @@ def ours(beta, gamma, cost, name, gate=None):
     pdead = np.mean([refine.predict(b, xd[0], xd[1], len(hand), symmetric=True) for b in bundles],
                     axis=0)
     hand2 = constrain(hand, refine.decode_dead(hand, pdead, blk, beta, gamma, cost), MODE)
+    n_d = np.sum(hand2 == D)
+    hand2, protect = out_rule(hand2, f, blk, args)
+    print("ball-out rule (protect {}, hold {:g} s): D {:+.1f}%".format(
+        bool(args.protect), args.hold, 100 * (np.sum(hand2 == D) / n_d - 1)))
     if gate:
         n_d = np.sum(hand2 == D)
-        hand2 = remove_gate(hand2, pdead, blk, gate[0], gate[1], dd.FPS)
+        hand2 = remove_gate(hand2, pdead, blk, gate[0], gate[1], dd.FPS, protect)
         print("remove gate T {:g} max_s {:g}: {:.1f}% of the head path's D made live".format(
             gate[0], gate[1], 100 * (1 - np.sum(hand2 == D) / n_d)))
     codes = chain(hand2, p1, s["p_ref"], f, blk, s["vote"])
@@ -178,12 +214,14 @@ def main():
     parser.add_argument("--ours", nargs=3, type=float, metavar=("BETA", "GAMMA", "COST"))
     parser.add_argument("--gate", nargs="*", type=float, metavar="T MAX_S",
                         help="DFL: gate grid; --ours: T MAX_S")
+    parser.add_argument("--protect", action="store_true", help="gate never removes a ball-out stretch")
+    parser.add_argument("--hold", type=float, default=0.0, help="D from ball out to restart touch, max S")
     parser.add_argument("--name", default="v30_dh")
     args = parser.parse_args()
     if args.ours:
-        ours(*args.ours, args.name, args.gate)
+        ours(*args.ours, args.name, args.gate, args)
     else:
-        dfl(args.gate is not None)
+        dfl(args.gate is not None, args)
 
 
 if __name__ == "__main__":
