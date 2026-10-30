@@ -2089,6 +2089,24 @@ head P(dead) is below T (optionally only if <= MAX_S s) is made live; the team d
   on a real stoppage of ours: 1 of the window's 4 stoppages (DFL: 3% of true-stoppage stretches).
   The domain gap again. **Rejected** as it is; v30_dh stays the candidate.
 
+**Why the head misses that stoppage** (`tools/stoppage_profile.py`): the public window's true
+stoppages >= 2 s, numbered S1–S4 (S4 is the one before #17), against DFL's 705 (held-out head):
+
+| | length | ball seen | longest gap | team speed | hand D | head P(dead) |
+|---|---|---|---|---|---|---|
+| S1 | 5.5 s | 7% | 5.1 s | 1.55 | 0% | 0.31 |
+| S2 | 20.4 s | 100% | 0 | 1.12 | 95% | 0.51 |
+| S3 | 18.3 s | 20% | 14.6 s | 1.16 | 64% | 0.79 |
+| **S4** | 14.5 s | **100%** | 0 | **2.13** | 91% | **0.01** |
+| DFL median (p10–p90) | 19.9 s | 42% | 9.5 s | 1.18 (0.82–1.71) | 99% | 0.97 (0.69–1.00) |
+
+- S4 is not a gap problem: the ball is seen throughout. The players move at 2.13 m/s, the 97th
+  percentile of DFL's stoppages; the head reads "players running" as live play.
+- All four of our stoppages sit in DFL's bottom 12% of head P(dead) (S1–S3 at 5–12th
+  percentile). The head is generally less sure of our stoppages, not only S4.
+- DFL's head misses (< 0.1) are 2–5% at every ball-seen share, so more gaps in training would
+  not reach S4.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
