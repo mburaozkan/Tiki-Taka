@@ -4,9 +4,11 @@
     python tools/render_labels.py evaluation/results/v5.csv --start 40:00 --minutes 5
     python tools/render_labels.py evaluation/results/v5.csv --start 2nd --minutes 3
     python tools/render_labels.py evaluation/results/v30.csv --possessions 10 12   # #10..#12
+    python tools/render_labels.py evaluation/results/v30_dhgp01.csv --compare evaluation/results/v30.csv         --start 11185 --minutes 54                                       # first half, vs v30
 
 Overlay, per frame:
   - top-left banner: the submission's label (H blue, A red, D grey);
+  - with --compare B: B's label next to it, and DIFF (yellow) where the two differ;
   - next to it, inside the public window only: the ground truth label, and WRONG when they differ;
   - the ATD ball circled in green (via the homography), "NO BALL" in a gap;
   - a touch makes the circle flash in the toucher's colour; "last touch" shows the carried side.
@@ -72,10 +74,14 @@ def main():
     parser.add_argument("--possessions", type=int, nargs=2, metavar=("FIRST", "LAST"),
                         help="cut around true public possessions #FIRST..#LAST instead")
     parser.add_argument("--width", type=int, default=1280, help="output width in pixels")
+    parser.add_argument("--compare", help="a second submission, shown next to the first")
     args = parser.parse_args()
 
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
     pred = pm.label_codes(pm.read_label_csv(args.submission))
+    other = pm.label_codes(pm.read_label_csv(args.compare)) if args.compare else None
+    short = os.path.splitext(os.path.basename(args.submission))[0]
+    other_short = os.path.splitext(os.path.basename(args.compare))[0] if args.compare else ""
     graded = np.flatnonzero(gt != pm.X)
     first = parse_start(args.start) if args.start else int(graded[0])
     last = min(len(pred), first + int(args.minutes * 60 * FPS))
@@ -97,8 +103,7 @@ def main():
     matrices, _, valid = load_homography()
 
     os.makedirs(OUT_DIR, exist_ok=True)
-    name = "{}_{}.mp4".format(os.path.splitext(os.path.basename(args.submission))[0],
-                              tag or first)
+    name = "{}{}_{}.mp4".format(short, "_vs_" + other_short if args.compare else "", tag or first)
     path = os.path.join(OUT_DIR, name)
 
     capture = cv2.VideoCapture(video_path())
@@ -118,14 +123,26 @@ def main():
             image = cv2.resize(image, size)
 
         label = int(pred[frame])
-        banner(image, 0, "pred " + NAMES[label], COLOURS[label], cv2)
+        x = 0
+        if other is None:
+            banner(image, 0, "pred " + NAMES[label], COLOURS[label], cv2)
+            x = 340
+        else:
+            banner(image, 0, "{} {}".format(short[-8:], NAMES[label][:1]), COLOURS[label], cv2, 230)
+            o = int(other[frame])
+            banner(image, 240, "{} {}".format(other_short[-8:], NAMES[o][:1]), COLOURS[o], cv2, 230)
+            if o != label:
+                cv2.putText(image, "DIFF", (480, 38), cv2.FONT_HERSHEY_SIMPLEX, 1.1,
+                            (0, 230, 255), 3)
+            x = 590
         truth = int(gt[frame])
         if truth != pm.X:
             number = " #{}".format(spell_no[frame]) if spell_no[frame] else ""
-            banner(image, 340, "truth" + number + " " + NAMES[truth][:1], COLOURS[truth], cv2, 350)
+            banner(image, x, "truth" + number + " " + NAMES[truth][:1], COLOURS[truth], cv2,
+                   350 if other is None else 260)
             if truth != label:
-                cv2.putText(image, "WRONG", (700, 38), cv2.FONT_HERSHEY_SIMPLEX, 1.1,
-                            (0, 0, 255), 3)
+                cv2.putText(image, "WRONG", (x + (360 if other is None else 270), 38),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 255), 3)
         if not any(a <= frame <= b for a, b in halves):
             cv2.putText(image, "outside the halves (not graded)", (10, 90),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)

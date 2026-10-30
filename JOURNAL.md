@@ -2130,6 +2130,11 @@ the first touch with it back on the pitch, at most S s.
 - **v30_dhgp01** (`--ours 0.5 0.5 25 --gate 0.1 0 --protect`, valid): DFL +0.054 over v30,
   public unchanged, 0.85% of the match goes D -> live. New candidate; v30 stays the submission.
 
+**Full-match render for a video check:** `tools/render_labels.py --compare B.csv` shows a second
+submission's label next to the first and DIFF where they differ. Both halves rendered as
+v30_dhgp01 vs v30 (`data/cache/renders/`, gitignored). Differences of at least 1 s: 55 (42 D
+added, 13 D removed).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
