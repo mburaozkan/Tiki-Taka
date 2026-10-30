@@ -2,11 +2,15 @@
 
     python tools/eval_dead_v30.py                               # DFL, leave one match out
     python tools/eval_dead_v30.py --ours 0.5 0.5 25 --name v30_dh   # our match, public check
+    python tools/eval_dead_v30.py --gate                          # DFL, + remove gate grid
+    python tools/eval_dead_v30.py --ours 0.5 0.5 25 --gate 0.3 0 --name v30_dhg
 
 v30 = v29's chain + touch-run vote + backdating (tools/eval_backdate.py). Here the hand path's
 D vs live is first extended by the dead-ball head (tools/eval_dead_refine.py, held-out
 probabilities from data/cache/dfl/dead_d1n.npz, deployed models models/dead_d1n_s0..2.pt), then
 v30's chain runs unchanged. Per setting: mean spellF1, delta vs v30, folds won / lost; nested.
+Remove gate (--gate): afterwards every D stretch whose mean head P(dead) is below T (and, if
+MAX_S > 0, no longer than MAX_S seconds) is made live, so the team decoder fills it.
 """
 
 import argparse
@@ -35,13 +39,29 @@ from pipeline.decode import H, A, D  # noqa: E402
 DEAD_TAG, DEAD_SEEDS, MODE = "d1n", 3, "add"
 VOTE = {"w": 2.0, "min_n": 2, "max_gap_s": 2.0, "hold_s": 4.0, "turnover": 1}   # v29_tr_a
 BACKDATE = {"p_max": 0.7, "max_s": 9.0, "loose_m": 1.5}                          # v30
+SETTING = (0.5, 0.5, 25.0)                                                       # dh1's head setting
+GATE_T = (0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
+GATE_MAX_S = (0.0, 10.0, 20.0)
+
+
+def remove_gate(hand2, pdead, blk, t, max_s, fps):
+    """Make live every D stretch of hand2 with mean P(dead) < t (and length <= max_s if max_s > 0)."""
+    out = hand2.copy()
+    for a0, b0 in blk:
+        dead = (hand2[a0:b0] == D).astype(np.int8)
+        e = np.diff(np.concatenate(([0], dead, [0])))
+        for s0, e0 in zip(np.flatnonzero(e == 1), np.flatnonzero(e == -1)):
+            a, b = a0 + s0, a0 + e0
+            if np.mean(pdead[a:b]) < t and (max_s <= 0 or (b - a) / fps <= max_s):
+                out[a:b] = H                # any live code: decode_hybrid re-decides the team
+    return out
 
 
 def chain(hand, p1, p_ref, f, blk, vote):
     return fixes.backdate(tr.decode(hand, p1, p_ref, f, blk, vote), f, **BACKDATE)
 
 
-def dfl():
+def dfl(gate):
     data = v25_inputs()
     with np.load(os.path.join(dd.CACHE, "refine_{}.npz".format(tr.TEAM_TAG))) as c:
         team = {k: c[k] for k in c.files}
@@ -63,33 +83,45 @@ def dfl():
     ref = np.array(ref)
     print("v30 reference {} | {:.4f}".format(" ".join("{:.3f}".format(x) for x in ref), ref.mean()))
     res, preds = {}, {}
-    for beta, gamma, cost in itertools.product(BETAS, GAMMAS, COSTS):
+    hand2 = {}
+    for g in dd.GAMES:
+        hand = data[g][1]
+        hand2[g] = constrain(hand, refine.decode_dead(hand, pdead[g], ctx[g][1], *SETTING), MODE)
+    if gate:
+        grid = [(None, None)] + list(itertools.product(GATE_T, GATE_MAX_S))
+    else:
+        grid = list(itertools.product(BETAS, GAMMAS, COSTS))
+    for key in grid:
         s, pr = [], {}
         for g in dd.GAMES:
             f, blk, p1, p_ref, vote = ctx[g]
-            hand = data[g][1]
-            hand2 = constrain(hand, refine.decode_dead(hand, pdead[g], blk, beta, gamma, cost), MODE)
-            pr[g] = chain(hand2, p1, p_ref, f, blk, vote)
+            if gate:
+                h = hand2[g] if key[0] is None else remove_gate(hand2[g], pdead[g], blk, *key, dd.FPS)
+            else:
+                hand = data[g][1]
+                h = constrain(hand, refine.decode_dead(hand, pdead[g], blk, *key), MODE)
+            pr[g] = chain(h, p1, p_ref, f, blk, vote)
             s.append(tr.score(data[g][0], pr[g]))
         s = np.array(s)
-        res[(beta, gamma, cost)], preds[(beta, gamma, cost)] = s, pr
-        print("beta {:<4g} gamma {:<4g} cost {:<4g} {} | {:.4f} | {:+.4f} | {}/{}".format(
-            beta, gamma, cost, " ".join("{:.3f}".format(x) for x in s), s.mean(), s.mean() - ref.mean(),
+        res[key], preds[key] = s, pr
+        label = ("v30_dh (no gate)" if key[0] is None else "gate T {:<4g} max_s {:<4g}".format(*key))             if gate else "beta {:<4g} gamma {:<4g} cost {:<4g}".format(*key)
+        print("{:<28} {} | {:.4f} | {:+.4f} | {}/{}".format(
+            label, " ".join("{:.3f}".format(x) for x in s), s.mean(), s.mean() - ref.mean(),
             int(np.sum(s > ref + 1e-9)), int(np.sum(s < ref - 1e-9))), flush=True)
     nested = np.array([res[max(res, key=lambda k: np.delete(res[k], i).mean())][i]
                        for i in range(len(dd.GAMES))])
     best = max(res, key=lambda k: res[k].mean())
-    print("nested {} | {:.4f} | {:+.4f} | {}/{}   best beta {:g} gamma {:g} cost {:g}: {:.4f}".format(
+    print("nested {} | {:.4f} | {:+.4f} | {}/{}   best {}: {:.4f}".format(
         " ".join("{:.3f}".format(x) for x in nested), nested.mean(), nested.mean() - ref.mean(),
-        int(np.sum(nested > ref + 1e-9)), int(np.sum(nested < ref - 1e-9)), *best, res[best].mean()))
-    for key in (best, (0.5, 0.5, 25.0)):
+        int(np.sum(nested > ref + 1e-9)), int(np.sum(nested < ref - 1e-9)), best, res[best].mean()))
+    e0 = np.sum([split_errors(data[g][0], base[g]) for g in dd.GAMES], axis=0)
+    for key in grid:
         e = np.sum([split_errors(data[g][0], preds[key][g]) for g in dd.GAMES], axis=0)
-        e0 = np.sum([split_errors(data[g][0], base[g]) for g in dd.GAMES], axis=0)
-        print("{:g}/{:g}/{:g}: D>live {:.1f}% -> {:.1f}%, live>D {:.1f}% -> {:.1f}% (v30 -> head)".format(
-            *key, 100 * e0[0] / e0[1], 100 * e[0] / e[1], 100 * e0[2] / e0[3], 100 * e[2] / e[3]))
+        print("{}: D>live {:.1f}% -> {:.1f}%, live>D {:.1f}% -> {:.1f}% (v30 -> this)".format(
+            key, 100 * e0[0] / e0[1], 100 * e[0] / e[1], 100 * e0[2] / e0[3], 100 * e[2] / e[3]))
 
 
-def ours(beta, gamma, cost, name):
+def ours(beta, gamma, cost, name, gate=None):
     from games import GAME, GAMES, half_video_blocks
     from pipeline.run import write_submission, RESULTS_DIR
     from report import brief_line, PUBLIC_GT
@@ -109,6 +141,11 @@ def ours(beta, gamma, cost, name):
     pdead = np.mean([refine.predict(b, xd[0], xd[1], len(hand), symmetric=True) for b in bundles],
                     axis=0)
     hand2 = constrain(hand, refine.decode_dead(hand, pdead, blk, beta, gamma, cost), MODE)
+    if gate:
+        n_d = np.sum(hand2 == D)
+        hand2 = remove_gate(hand2, pdead, blk, gate[0], gate[1], dd.FPS)
+        print("remove gate T {:g} max_s {:g}: {:.1f}% of the head path's D made live".format(
+            gate[0], gate[1], 100 * (1 - np.sum(hand2 == D) / n_d)))
     codes = chain(hand2, p1, s["p_ref"], f, blk, s["vote"])
     base = s["codes"]
     path = write_submission(os.path.join(RESULTS_DIR, name + ".csv"), codes)
@@ -139,12 +176,14 @@ def ours(beta, gamma, cost, name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ours", nargs=3, type=float, metavar=("BETA", "GAMMA", "COST"))
+    parser.add_argument("--gate", nargs="*", type=float, metavar="T MAX_S",
+                        help="DFL: gate grid; --ours: T MAX_S")
     parser.add_argument("--name", default="v30_dh")
     args = parser.parse_args()
     if args.ours:
-        ours(*args.ours, args.name)
+        ours(*args.ours, args.name, args.gate)
     else:
-        dfl()
+        dfl(args.gate is not None)
 
 
 if __name__ == "__main__":

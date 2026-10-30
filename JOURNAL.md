@@ -2070,6 +2070,25 @@ second stage only decides the team; D vs live is the hand path's (plus the add-o
   (below 0.5: 93% / 5%). So a stretch-level removal gate on the head is the next test (the free
   head, frame by frame, removed real stoppages on our public window, 2026-10-27).
 
+**Remove gate** (`eval_dead_v30.py --gate`): after the add-only head, every D stretch whose mean
+head P(dead) is below T (optionally only if <= MAX_S s) is made live; the team decoder fills it.
+
+| | DFL | vs v30 | folds | live called D | public spF1 / mF1 | full D |
+|---|---|---|---|---|---|---|
+| v30_dh (no gate) | 0.6149 | +0.039 | 7/0 | 13.1% | 0.812 / 0.917 | 48.8% |
+| gate T 0.05 | 0.6290 | +0.054 | 7/0 | 10.7% | | |
+| gate T 0.1 | 0.6284 | +0.053 | 7/0 | 10.5% | 0.776 / 0.850 | 47.6% |
+| gate T 0.3 | 0.6274 | +0.052 | 7/0 | 10.0% | 0.776 / 0.850 | 46.7% |
+| gate T 0.5 | 0.6254 | +0.050 | 6/1 | 9.4% | 0.776 / 0.850 | 44.4% |
+| nested | 0.6259 | +0.050 | 6/1 | | | |
+
+- DFL: +0.014 over v30_dh (all cells 7/0 up to T 0.3). Length caps (10 / 20 s) do worse.
+- **Public: −0.036 spF1, −0.067 mF1 at every T.** Per possession (`spell_table.py`) one change
+  only: the true stoppage between #16 and #17 (14.5 s) is removed whole, so #16 runs on +1.6 s
+  (IoU 0.94 -> 0.78) and #17 starts 12.9 s early (0.90 -> 0.48). The head's P(dead) is below 0.1
+  on a real stoppage of ours: 1 of the window's 4 stoppages (DFL: 3% of true-stoppage stretches).
+  The domain gap again. **Rejected** as it is; v30_dh stays the candidate.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
