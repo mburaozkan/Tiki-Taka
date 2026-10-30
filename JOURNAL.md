@@ -2039,6 +2039,21 @@ retraining) extends the hand path's D, then v30's chain (touch-run vote + backda
 - Caveat as with dh1: full-match D 48.8% is at the top of the plausible range (37–50%).
   **v30_dh.csv** written (valid). Candidate; v30 stays until checked on the full match.
 
+**Where live play is called D** (`tools/dead_overcall.py`, DFL): each true-live frame called D
+is put by its called D stretch into early (before a true stoppage it overlaps), late (after it:
+restart called late) or phantom (the stretch overlaps no true stoppage). Oracle = those frames
+take the labelled team (upper bound of a fix).
+
+| | live called D | early | late | phantom | phantom stretches |
+|---|---|---|---|---|---|
+| v30 | 12.7% | 2.4% (oracle +0.026) | 4.8% (+0.059) | 5.5% (+0.092) | 19.5 / 90 min, median 3.9 s |
+| v30_dh | 13.1% | 2.6% (+0.026) | 4.9% (+0.060) | 5.6% (+0.094) | 19.3 / 90 min, median 4.0 s |
+
+- The head doesn't add any of this; it is the hand path's D. Phantom D (D out of nowhere) is
+  the largest single loss left on DFL, then late restarts.
+- Caveat: on the public window live play is never called D, so part of DFL's phantom D may come
+  from our degradation of DFL (gap pattern, animated dead ball).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
