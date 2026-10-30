@@ -111,7 +111,8 @@ column gives the command for the current code.
 | **v21** | **v20 decides D; learned GBM+GRU (trained on DFL) decides the team. DFL 0.579 (5/7)** | **261** | **40%** | **37%** | **0.66 / 0.88** | `python pipeline/run_learned.py --name v21 --source dfl --model blend --hybrid 10` |
 | v29_tr_a | submission 2026-10-28 (morning): v29 + touch-run vote (two same-team touches after a turnover back that team, w 2, gap 2 s, hold 4 s). DFL 0.573 (+0.0024, 6/1) | 263 | 40% | 37.4% | 0.727 / 0.886 | v29's chain, then `python tools/eval_touch_run.py --ours "w=2 min_n=2 max_gap_s=2 hold_s=4 turnover=1" --name v29_tr_a` |
 | v29_bd_b | submission 2026-10-28, renamed v30 on 2026-10-29: v29_tr_a + backdating (a change of team moves back to the other team's previous touch when that was weak (P < 0.7), within 9 s, nothing between, ball loose >= 1.5 m). DFL 0.5755 (+0.0024 vs v29_tr_a, 5/1; nested +0.0018) | 263 | 40% | 37.4% | 0.812 / 0.901 | v29's chain, then `python tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v29_bd_b` |
-| **v30** | **submission (since 2026-10-29): v29_bd_b under its own version number** (byte-identical). The dead-ball head candidate that used to be called v30 is now **dh1** (`v30_d1n_add.csv`) | 263 | 40% | 37.4% | **0.812 / 0.901** | v29's chain, then `python tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v30` |
+| v30 | submission 2026-10-29 to 2026-10-30: v29_bd_b under its own version number (byte-identical). The dead-ball head candidate that used to be called v30 is now **dh1** (`v30_d1n_add.csv`) | 263 | 40% | 37.4% | 0.812 / 0.901 | v29's chain, then `python tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v30` |
+| **v31** | **submission (since 2026-10-30): v30 + dead-ball head (d1n, add-only) + remove gate (a D stretch with mean head P(dead) < 0.1 is made live) protected by the ball-out rule (never a stretch with the ball seen out of play). DFL 0.6295 (+0.054 vs v30, 7/0)**; checked on the full match by video | 238 | 40% | 48.0% | **0.812 / 0.917** | v29's chain (v25, v29 builds), then `python tools/eval_dead_v30.py --ours 0.5 0.5 25 --gate 0.1 0 --protect --name v31` (models/dead_d1n_s0..2.pt; rebuild byte-identical, ef2ea808…) |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -2129,6 +2130,8 @@ the first touch with it back on the pitch, at most S s.
   rejected.
 - **v30_dhgp01** (`--ours 0.5 0.5 25 --gate 0.1 0 --protect`, valid): DFL +0.054 over v30,
   public unchanged, 0.85% of the match goes D -> live. New candidate; v30 stays the submission.
+- **Adopted as v31 (user, 2026-10-30)** after watching the full match: mostly better, a few small
+  tweaks left. Rebuild gives the same file byte for byte (ef2ea808…).
 
 **Full-match render for a video check:** `tools/render_labels.py --compare B.csv` shows a second
 submission's label next to the first and DIFF where they differ. Both halves rendered as
@@ -2144,7 +2147,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | **v29** (v27 + second-stage network, 12.5 fps, 5 seeds) | 0.697 / 0.882 | DFL 0.571 |
 | realistic DFL (7 matches, folds won) | **v29** | 0.571 vs 0.560 (6/7, passes) | public 0.697 / 0.882 |
-| **submitted file (since 2026-10-29)** | **v30** (= v29_bd_b: v29 + touch-run vote + backdating) | public 0.812 / 0.901 | DFL 0.5755 (v29_tr_a 0.5731, v29 0.571) |
+| **submitted file (since 2026-10-30)** | **v31** (v30 + dead-ball head + remove gate with the ball-out rule) | public 0.812 / 0.917 | DFL 0.6295 (v30 0.5755) |
+| previous submission (2026-10-29 to 2026-10-30) | v30 (= v29_bd_b: v29 + touch-run vote + backdating) | public 0.812 / 0.901 | DFL 0.5755 (v29_tr_a 0.5731, v29 0.571) |
 | previous submission (2026-10-28, morning) | v29_tr_a (v29 + touch-run vote) | public 0.727 / 0.886 | DFL 0.573 (v29 0.571, 6/1; nested −0.003) |
 | previous submission (2026-10-26 to 2026-10-28) | v29 (v27 + second-stage bidirectional team network) | public 0.697 / 0.882 | DFL 0.571 (v27 0.560, v25 0.551, v21 0.541) |
 
@@ -2183,6 +2187,9 @@ only our match after our own changes to it), but both are tracked and worked fro
 - `pipeline/`, `tools/` and this journal are **not committed yet**.
 
 ## Resume here (paused 2026-10-27 02:35)
+
+**Update 2026-10-30: the submission is v31** (v30 + dead-ball head + remove gate with the ball-out
+rule; public 0.812 / 0.917, DFL 0.6295; rebuild byte-identical). Next: the keeper problem.
 
 **Update 2026-10-29: the submission is v30 (= v29_bd_b; the old dead-ball "v30" is now dh1)** (v29 + touch-run vote + backdating, public
 0.812 / 0.901, DFL 0.5755; validated, rebuild byte-identical). #2 and #15 are fixed. Still open in
