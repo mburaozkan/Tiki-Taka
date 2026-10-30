@@ -2020,6 +2020,25 @@ rule velocity peak at 71% of starts, one with the new team's player nearest with
 #10 and #12: no peak within ±0.5 s; within ±1 s #10 has a peak with a Barcelona player nearest
 within 3 m (#12 a peak, Athletic's player nearest). Broadcast direction closed for #10 / #12.
 
+### 2026-10-30: dead-ball head (dh1) on top of v30
+
+`tools/eval_dead_v30.py`: the dead-ball head (d1n, add-only: the hand path's D is kept, the head
+may only add D; held-out probabilities `dead_d1n.npz`, deployed `models/dead_d1n_s0..2.pt`, no
+retraining) extends the hand path's D, then v30's chain (touch-run vote + backdating) runs as is.
+
+| | DFL (7, leave one out) | public spF1 / mF1 | full-match D | possessions |
+|---|---|---|---|---|
+| v30 | 0.5755 | 0.812 / 0.901 | 37.4% | 263 |
+| **v30_dh** (0.5 / 0.5 / 25, dh1's setting) | **0.6149 (+0.039, 7/0)** | **0.812 / 0.917** | 48.8% | 243 |
+| best cell 0.5 / 0 / 25 | 0.6160 (+0.040, 7/0) | | | |
+| nested | 0.6144 (+0.039, 7/0) | | | |
+
+- All 32 grid cells win 7/0 on DFL. True D called live 13.0% -> 2.1%; live called D 12.7% -> 13.1%.
+- Our match: 11.4% of frames go live -> D, none D -> live, team changes 0.02%. Public spellF1
+  unchanged; per possession as v30 (16/17 matched).
+- Caveat as with dh1: full-match D 48.8% is at the top of the plausible range (37–50%).
+  **v30_dh.csv** written (valid). Candidate; v30 stays until checked on the full match.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
