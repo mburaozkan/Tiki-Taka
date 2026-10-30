@@ -2054,6 +2054,22 @@ take the labelled team (upper bound of a fix).
 - Caveat: on the public window live play is never called D, so part of DFL's phantom D may come
   from our degradation of DFL (gap pattern, animated dead ball).
 
+**What phantom D looks like** (`tools/phantom_diag.py`, DFL, v30_dh). Note: the bidirectional
+second stage only decides the team; D vs live is the hand path's (plus the add-only head).
+
+| frames | ball seen | gap (s) | ball speed | player speed | head P(dead) |
+|---|---|---|---|---|---|
+| phantom | 0.35 | 9.9 | 6.5 | 1.53 | 0.16 |
+| true stoppage called D | 0.37 | 22.5 | 3.3 | 1.05 | 0.96 |
+| live called live | 0.85 | 2.1 | 7.0 | 2.49 | 0.01 |
+
+- 143 phantom stretches: ball missing throughout 22%, partly 18%, seen throughout 59%. Players
+  slower than in normal play and the ball often missing: the hand rule's slow + gap terms.
+- **The dead-ball head already separates them:** mean P(dead) per stretch, phantom median 0.00,
+  stretches holding a true stoppage 0.91. Below 0.3: 88% of phantom stretches, 3% of true ones
+  (below 0.5: 93% / 5%). So a stretch-level removal gate on the head is the next test (the free
+  head, frame by frame, removed real stoppages on our public window, 2026-10-27).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
