@@ -2138,6 +2138,30 @@ submission's label next to the first and DIFF where they differ. Both halves ren
 v30_dhgp01 vs v30 (`data/cache/renders/`, gitignored). Differences of at least 1 s: 55 (42 D
 added, 13 D removed).
 
+### 2026-11-02: does DFL have the #10 / #12 pattern? (long kick, then a short possession)
+
+#10 and #12 are both a long kick by Athletic's keeper, a Barcelona header, then straight off an
+Athletic player. In v31, missing #10 merges #9 and #11 into one A spell: #9 ends 12.3 s late
+and #11 (IoU 0.31) scores 0, so a rough split near #10 would win most of #10-#12's ~0.18.
+Before building a "long keeper kick -> contest at the landing" rule, a check of DFL
+(`tools/kick_shorts.py`; long kick = Play / GoalKick / FreeKick whose next on-ball event is
+>= 35 m away within 5 s, deep = within 25 m of the own goal line; window 6 s; short < 2 s):
+
+| labels | long kicks (deep) | deep: other team short, then kicker | all long: same | short possessions | after a long kick (deep) |
+|---|---|---|---|---|---|
+| controlled (benchmark truth) | 219 (89) | 4 (4.5%) | 10 (4.6%) | 285 | 11 (3.9%) / 4 (1.4%) |
+| raw provider flags | 219 (89) | 12 (13.5%) | 21 (9.6%) | 919 | 25 (2.7%) / 12 (1.3%) |
+
+- DFL has very few of these: 4 cases in 7 matches by our truth, 12 by the raw flags. Too few to
+  train on or to tune a rule on.
+- Our controlled-label filter removes two thirds of them. It hands possessions without a
+  controlled action of their team to a neighbour, and a header that is a defensive clearance is not
+  controlled. The public truth keeps #10 / #12 (a header into the opponent), so on this exact
+  pattern **DFL's truth uses a different definition from the organisers'**. DFL can't judge
+  a fix here; at best it can bound the damage a rule does elsewhere (false splits).
+- Base rate: after a deep long kick the other team gets a short spell 4.5-13.5% of the time,
+  so a rule needs a strong landing signal to be right more often than wrong.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
