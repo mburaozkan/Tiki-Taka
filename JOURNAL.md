@@ -2270,6 +2270,20 @@ the edge of plausible): waiting on the user's decision whether to submit it.
 
 ## Next steps
 
+**Next session (agreed 2026-11-02): more data for the short possessions (#10 / #12).** Missing
+#10 merges #9 and #11 into one A spell (#9 ends 12.3 s late, #11 scores 0); missing #12 hurts
+#11 from the other side. Catching #10 and #12 fixes #9-#12 together (~0.18 public spellF1).
+DFL (4-12 cases) and Metrica (~16, duel-like) have too few of the long kick -> short contact
+pattern, and their truths don't count those contacts the organisers' way.
+1. **PFF FC World Cup 2022** (64 matches): the user requests access. Check the spec PDFs:
+   tracking fps, ball height, broadcast gaps, and whether the possession events mark brief
+   contacts (a header straight into an opponent). Data goes to `data/external/pff/`.
+2. **SkillCorner open data** (10 matches, 10 fps, `player_possession` events): download, count
+   short possessions and the long kick -> short contact pattern (as `tools/kick_shorts.py`).
+3. If either has enough cases: a loader like `tools/dfl_data.py`, the DFL treatment (gap
+   pattern, blur), then the touch / short-possession networks retrained with it, and v31's chain
+   checked leave one match out plus the public window.
+
 **Queue (2026-10-26), judged on realistic DFL, leave one match out, ≥ 5/7 folds:**
 1. ATD channel check: done, negative.
 2. Pace shift: done, rejected ((a) quantile normalisation, (b) time warp, (c) domain weighting:
