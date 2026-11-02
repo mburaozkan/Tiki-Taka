@@ -2162,6 +2162,23 @@ Before building a "long keeper kick -> contest at the landing" rule, a check of 
 - Base rate: after a deep long kick the other team gets a short spell 4.5-13.5% of the time,
   so a rule needs a strong landing signal to be right more often than wrong.
 
+**Same pattern in Metrica's 3 games** (`tools/kick_shorts_metrica.py`, hand-tagged events,
+same long-kick definition; pattern = the other team's first event after the kick, then the
+kicker's own event again within 2 s):
+
+| kicks | n | no contact by the other team | contact, kicker back < 2 s | contact, other team keeps |
+|---|---|---|---|---|
+| deep | 46 | 20 | **16** | 10 |
+| not deep | 68 | 59 | 4 | 5 |
+
+- The pattern is common after deep kicks here (16 / 46), but the contacts are mostly duels:
+  CHALLENGE AERIAL-LOST 7, GROUND-LOST 3, GROUND-FAULT-LOST 2, RECOVERY 2 (+5 single others).
+  Metrica tags both sides of a duel, so some are the loser of a header the kicker's team won.
+  Metrica's labels (built from passes / set pieces / confirmed recoveries) don't make these
+  possessions either.
+- All we have, then: 4 (DFL truth) to 12 (DFL raw flags) plus ~16 duel-like Metrica cases, none
+  labelled with the organisers' definition. More data is needed for this pattern.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
