@@ -2179,6 +2179,18 @@ kicker's own event again within 2 s):
 - All we have, then: 4 (DFL truth) to 12 (DFL raw flags) plus ~16 duel-like Metrica cases, none
   labelled with the organisers' definition. More data is needed for this pattern.
 
+**More external data for short possessions (checked 2026-11-02):**
+- **SkillCorner open data** (GitHub, MIT, credit SkillCorner): 10 A-League 2024/25 matches,
+  broadcast tracking at 10 fps (players extrapolated off camera, `is_detected` flag, ball in
+  `ball_data`), per-match `dynamic_events.csv` with `player_possession` rows (start / end per
+  player possession, so short possessions are labelled directly) and `phases_of_play.csv`.
+  At 10 fps a 0.8 s possession is 8 frames.
+- **PFF FC World Cup 2022** (form on PFF's blog, instant access): all 64 matches, broadcast
+  tracking (`{game}.jsonl.bz2` per game), event data with possession events, metadata and rosters.
+  Details (fps, ball height, event types) are in their PDF specs, still to check.
+- Plan: PFF if its events mark brief contacts (challenges, touches); SkillCorner as a quick free
+  second set. Both go through the DFL treatment (our gap pattern, blur), leave one match out.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
