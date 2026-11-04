@@ -2191,6 +2191,41 @@ kicker's own event again within 2 s):
 - Plan: PFF if its events mark brief contacts (challenges, touches); SkillCorner as a quick free
   second set. Both go through the DFL treatment (our gap pattern, blur), leave one match out.
 
+### 2026-11-04: SkillCorner open data, the #10 / #12 pattern counted
+
+The user is downloading PFF World Cup 2022 into `data/external/pff/`. Meanwhile SkillCorner:
+`data/external/skillcorner/repo` (git clone + `git lfs pull`, gitignored). The repo now has
+**20 matches** (A-League 2024/25), not 10; tracking ~90 MB per match, 10 fps.
+
+- Tracking per frame: `ball_data` (x, y, **z**, `is_detected`), 22 `player_data` (x, y,
+  `is_detected`), a per-frame `possession` (player, group) and the camera's field-of-view corners.
+  In one match: ball position present in 73% of frames, detected (not extrapolated) in 60%;
+  players detected 58%. Broadcast, so its gaps look more like ours than DFL's.
+- `dynamic_events.csv`: 18,710 `player_possession` rows (median 1.2 s, quarter under 0.5 s) with
+  start types (pass_reception, pass_interception, recovery, restarts), end types and `is_header`.
+
+`tools/kick_shorts_skillcorner.py` (same definitions as the DFL / Metrica checks: long kick
+>= 35 m within 5 s, deep = within 25 m of own goal line, other team's spell < 2 s then the kicker
+back within 2 s):
+
+| kicks | n | kicker keeps | other team short, kicker back | other team keeps |
+|---|---|---|---|---|
+| deep | 454 | 71 | **46 (10.1%)** | 337 |
+| not deep | 1711 | 357 | 183 | 1171 |
+
+- 46 deep cases, against 4 (DFL truth) / 12 (DFL raw) / ~16 duel-like (Metrica). 21 of the 46
+  contacts are headers, 30 start as a pass interception, 15 as a recovery; 41 are a single player
+  possession.
+- Here these contacts **are labelled as possessions** (a player possession of the other team),
+  which matches the organisers' treatment of #10 / #12, unlike DFL's controlled filter.
+- Base rate: 1,027 of 3,929 team spells are < 2 s and between two spells of the other team (923
+  of them a single player possession). Plenty of short possessions to train on, not just after
+  long kicks.
+
+**Next:** a loader (`tools/skillcorner_data.py`, like `dfl_data.py`): tracking to our frame
+format, labels from the player possessions (team spells, D from the restarts / gaps between
+possessions), then check the per-frame `possession` field against them. Then PFF once it is in.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
