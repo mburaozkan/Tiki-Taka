@@ -308,7 +308,8 @@ def save(bundle, path):
 
 def load(path):
     import torch
-    saved = torch.load(path, weights_only=False)
+    saved = torch.load(path, weights_only=False,
+                       map_location=None if torch.cuda.is_available() else "cpu")
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     cfg = saved.get("cfg", {"BIN": 5, "HIDDEN": 64, "LAYERS": 2, "CONV": 0, "PLAYERS": 0})
     model = _net(len(saved["mean"]), cfg).to(dev)

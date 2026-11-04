@@ -221,10 +221,6 @@ def ours(weights, source="strong"):
         dec = learned.decode_hybrid(hand, prob, blks, 10.0)
         dteam, dmask = decoded_pseudo(dec, prob)
         merged = np.where(conf, team, dteam)
-        sets = [(cols, merged, (conf | dmask) & graded)]
-        for g in dd.GAMES:
-            lab = dd.load(g)["controlled"]
-            sets.append((player_cols_cached(g, dd.load(g)), lab, np.isin(lab, (H, A))))
         print("ours: decoded pseudo-labels {:.1f}% of graded frames".format(
             100 * dmask[graded].mean()))
         model_path = os.path.join(ROOT, "models", "po_team_v25.txt")
@@ -232,6 +228,11 @@ def ours(weights, source="strong"):
             import lightgbm as lgb
             model = lgb.Booster(model_file=model_path)
         else:
+            # DFL is only needed to (re)train the model; loading the saved one needs no DFL data
+            sets = [(cols, merged, (conf | dmask) & graded)]
+            for g in dd.GAMES:
+                lab = dd.load(g)["controlled"]
+                sets.append((player_cols_cached(g, dd.load(g)), lab, np.isin(lab, (H, A))))
             model = train_po_multi(sets)
             model.save_model(model_path)
         p_po = predict_po(model, cols)
