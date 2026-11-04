@@ -2397,6 +2397,30 @@ Neither catches #10 / #12. Next (user's idea): a hand rule at the landing of a l
 team that closes on the landing point gets the ball (distance, closing speed, touch), checked on
 SkillCorner + PFF and then the public window.
 
+### 2026-11-05: landing rule for long kicks (user's idea): dropped
+
+`tools/landing_rule.py`. Kick = a v31 touch pick of team T while v31 says T; landing L = the first
+touch-network peak after it (P >= 0.3), which must be >= 35 m from the kick point within 5 s
+(the first version took the first far peak and so chained short passes: 18,653 "long kicks",
+fixed). Who wins at L: `dist` (O's nearest player closer by a margin), `close` (distance minus
+0.5 s x closing speed), `touch` (max P(O touch) within +/- 0.4 s beats T's), `both`. If O wins and
+v31 says T: O until T's next touch within KEEP s (2 / 3 / 5), or KEEP 0 = turnover (O until v31's
+next change, at most 10 s). Deep-only or all kicks; margins 0-4 m.
+
+- SkillCorner + PFF: 1,614 long kicks (19 per match), 540 deep. Best setting +0.0001 (touch,
+  deep, keep 2: 15 / 18 matches, fired 42, precision 0.31); turnover variant -0.0003 to -0.0006.
+- Why: the closer team does predict who gets the ball (O has it within 1 s after 47-49% of
+  landings when O is closer, 17-25% when T is), and so does the touch side (50% vs 15%). But
+  "O briefly, then T back" follows only 4-6% of long kicks whoever is closer, and v31 already
+  gives O most of the real turnovers (31% of deep landings vs 36% in the truth). Where the rule
+  disagrees with v31, v31 is right 70-90% of the time.
+- Public window: 26 long kicks in our match (8 deep), 3 in the window (1 deep, though #10 and #12
+  both start from keeper kicks). The short variants never fire (0.812 / 0.917 unchanged); the
+  turnover variant fires once in the window: 0.800.
+
+Dropped. v31 stays the submission. #10 / #12 remain open: on our tracking even the deep keeper
+kicks before them are found only in part.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
