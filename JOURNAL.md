@@ -2226,6 +2226,64 @@ back within 2 s):
 format, labels from the player possessions (team spells, D from the restarts / gaps between
 possessions), then check the per-frame `possession` field against them. Then PFF once it is in.
 
+### 2026-11-04 (later): SkillCorner loader; PFF World Cup 2022 checked
+
+**`tools/skillcorner_data.py`** (cache in `data/cache/skillcorner/`). The 10 fps tracking is
+resampled to 25 fps (linear between consecutive frames only) into DFL's arrays: players (x, y,
+speed from positions), `pdet`, ball (detected only, NaN otherwise), `ball_est` (with SkillCorner's
+extrapolation), `tracked`, team, period, labels, and the player possessions as events (start,
+end, team, header, start / end type). Labels:
+- inside a player possession: its team; between two in live play: the earlier team (the switch
+  is at the next team's first touch);
+- dead (interruption after the earlier one, restart start type or interruption before the next
+  one): the earlier team until the ball is first seen outside the lines, D until the ball was last
+  still or slow before the restart, then the restart team;
+- before the first / after the last possession of a period, and frames with no players
+  (replays, cut-aways): X.
+
+| | poss / live min | median | < 2 s | D | graded frames | ball seen (graded) | players detected |
+|---|---|---|---|---|---|---|---|
+| 20 matches (range) | 3.9-6.3 | 6.2-9.0 s | 10-19% | 17-35% | 66-81% | 75-85% | 49-66% |
+| public window | 4.2 | 7.6 s | 12% | | | | |
+
+- The profile is close to the public window's, much closer than DFL's raw flags (6.5-11 / min).
+- SkillCorner's per-frame `possession` field agrees with these labels on 86% of H / A frames
+  (89% inside possessions, 83% in flights; no time offset helps, best +0.002 at -0.5 s), in
+  disagreement runs of median 1.4 s. It is a looser automatic label; the events stay the truth.
+
+**PFF FC World Cup 2022** (`data/external/pff/FIFA World Cup 2022/`, 64 matches, 5.3 GB):
+- Tracking: Sportlogiq broadcast tracking at the video's 29.97 fps, 11 + 11 players (estimated
+  off screen: 69% of player positions in one match are ESTIMATED), ball with z in 74% of frames
+  (63% of those VISIBLE, the rest estimated). Each frame carries the game / possession event it
+  belongs to. A smoothed ball placed on the carrier from the events is also there (not usable as
+  input: it comes from the labels).
+- Events: OTB game events ("a player has control over the ball", start / end time, team) with
+  possession events (pass, cross, clearance, challenge, rebound, shot, carry, touch), body part
+  (HE = head), challenge type and outcome, and `sequence` = PFF's own team possession
+  ("an uninterrupted possession by one team").
+
+`tools/kick_shorts_pff.py`, same definitions, from the OTB events:
+
+| kicks | n | kicker keeps | other team short, kicker back | of those, own PFF sequence | other team keeps |
+|---|---|---|---|---|---|
+| deep | 1176 | 474 | 172 | **56** | 530 |
+| not deep | 2053 | 1218 | 125 | 51 | 710 |
+
+- OTB events include both sides of a duel: 97 of the 172 deep contacts are challenges, 96 have two
+  OTB events, 58 are headers. PFF gives the contact its own sequence (a team possession) in 56 of
+  them, about a third; in the others the kicker's team keeps the sequence.
+- Base rate: 8,322 of 19,933 OTB team runs are < 2 s between two runs of the other team, but only
+  2,549 of them are their own PFF sequence. For labels, PFF's `sequence` is the possession, not
+  the OTB team.
+
+Cases of the deep kick -> short contact pattern, labelled as possessions: SkillCorner 46 (20
+matches), PFF 56 (64), against 4 on DFL. Enough to train and check a rule on.
+
+**Next:** a PFF loader (`tools/pff_data.py`): tracking at 29.97 fps resampled to 25, labels from
+`sequence` (team from the sequence's OTB events, D from OUT game events and restarts), the raw
+(not smoothed) ball. Then the short-possession check: v31's chain on SkillCorner and PFF with the
+DFL treatment (our gaps, blur), how many of these 46 + 56 it catches, before any retraining.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
