@@ -2325,6 +2325,41 @@ Cases of the pattern labelled as possessions: SkillCorner 46 (20 matches) + PFF 
 **Next:** v31's chain on SkillCorner and PFF with the DFL treatment (our gaps, blur): spellF1
 overall and how many of the 46 + 152 short contacts it catches, before any retraining.
 
+### 2026-11-04 (night): v31 unchanged on SkillCorner and PFF
+
+`tools/run_v31_external.py <skillcorner|pff>` (results in `data/external/results/v31_<set>.csv`,
+~50-70 s per match). Our match's deployed recipe, nothing trained on the target's truth: deployed
+touch network, hand path, gbm_dfl + gru_dfl blend, the players-only team model trained on the 7 DFL
+matches plus this match's own pseudo-labels (the unsupervised step our match gets too), stage 1,
+refine_v29 x5, touch-run vote, dead head d1n x3 (add-only), ball-out protected gate T 0.1,
+backdating. Ball: the set's own broadcast ball (gaps and moving dead ball already there), blurred
+like DFL; no animation, no extra gaps. Extra time (3 PFF matches) is decoded as its own blocks.
+
+Short truth spells = H / A spells < 2 s with spells of the other team directly on both sides (no D
+in between); caught = a predicted spell of that team with IoU >= 0.5. Deep-kick subset = those
+starting at the landing of a deep long kick of the other team (event positions, as before).
+
+| set | matches | v25 | v31 | v31 - v25 | short caught v25 / v31 | after deep kick v25 / v31 |
+|---|---|---|---|---|---|---|
+| SkillCorner | 20 | 0.5785 | **0.5989** | +0.020 (18 / 2) | 13 / **22** of 213 | 2 / 2 of 13 |
+| PFF | 64 | 0.5231 | **0.5366** | +0.014 (47 / 17), 95% CI +0.009 to +0.018 | 56 / **86** of 1,442 | 5 / 8 of 120 |
+| DFL (for scale, leave one out) | 7 | | 0.6295 | | | |
+
+- v31's steps over v25 carry to two new providers without retraining (+0.014 to +0.020,
+  most matches up). Levels are below DFL: broadcast tracking, players largely estimated (PFF median
+  38% visible), PFF's fine-grained sequences.
+- **Short possessions are missed almost everywhere:** 6-10% of short truth spells caught, 6-15%
+  after a deep long kick. The #10 / #12 weakness is general, not specific to our match, and these
+  sets give 213 + 1,442 labelled short spells (13 + 120 after deep kicks) to work on.
+- Only 13 of SkillCorner's 46 event-level deep-kick cases are < 2 s spells in the frame labels:
+  the possession runs to the next team's touch, so the flight after the contact often takes it
+  past 2 s (and a replay cut can end a spell early).
+
+**Next:** train on the short spells. Candidates: (a) the touch / turnover network retrained with
+SkillCorner + PFF (broadcast-like ball, contacts labelled), (b) a short-possession head on the
+second stage that proposes brief other-team spells at landings, judged leave-one-match-out on
+SkillCorner + PFF and then DFL + the public window.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
