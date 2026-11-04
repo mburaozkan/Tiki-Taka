@@ -9,7 +9,9 @@ Long kick = an OTB event ending in a pass, cross or clearance whose next OTB eve
 metres away within MAX_FLIGHT_S; deep = kicked within DEEP_M of the kicker's own goal line.
 Pattern = the next OTB is the other team O's, O's run of OTB events lasts < SHORT_S, and the
 kicker's team has an OTB again within BACK_S. For each case: does PFF open a new sequence for
-O's contact (i.e. count it as a team possession), and what the contact is.
+O's contact (i.e. count it as a team possession), and what the contact is. Sequences are the
+tracking files' (from the pff_data cache, matched by start time; run tools/pff_data.py first),
+or with --event-seq the coarser event-file column added in 2025.
 
     python tools/kick_shorts_pff.py
 """
@@ -35,7 +37,14 @@ BACK_S = 2.0
 KICKS = ("PA", "CR", "CL")
 
 
-def otb_events(game):
+def tracking_seq(game):
+    """{startTime (rounded): tracking-file sequence} from the pff_data cache."""
+    path = os.path.join(DATA_DIR, "cache", "pff", f"{game}.npz")
+    with np.load(path) as c:
+        return {round(float(t), 3): int(q) for t, q in zip(c["event_t0"], c["events"][:, 3])}
+
+
+def otb_events(game, seq_map=None):
     """[(period, t0, t1, team_is_home, sequence, ball_xy, pe_type, body, setpiece)] in time order."""
     ev = json.load(open(os.path.join(SRC, "Event Data", f"{game}.json"), encoding="utf-8"))
     out = []
@@ -48,8 +57,9 @@ def otb_events(game):
         if b.get("x") is None:
             continue
         pe = r.get("possessionEvents") or {}
+        seq = r.get("sequence") if seq_map is None else seq_map.get(round(r["startTime"], 3))
         out.append((g["period"], r["startTime"], r["endTime"] or r["startTime"], bool(g["homeTeam"]),
-                    r.get("sequence"), (b["x"], b["y"]), pe.get("possessionEventType"),
+                    seq, (b["x"], b["y"]), pe.get("possessionEventType"),
                     pe.get("bodyType"), g.get("setpieceType")))
     out.sort(key=lambda e: (e[0], e[1]))
     return out
@@ -68,7 +78,7 @@ def main():
         length = float((meta.get("stadium") or {}).get("pitches", [{}])[0].get("length") or 105.0) \
             if isinstance((meta.get("stadium") or {}).get("pitches"), list) else 105.0
         home_left = bool(meta.get("homeTeamStartLeft"))
-        e = otb_events(game)
+        e = otb_events(game, None if "--event-seq" in sys.argv else tracking_seq(game))
         n_games += 1
         # base rate: short team runs of OTB events sandwiched by the other team; PFF sequences
         runs = []

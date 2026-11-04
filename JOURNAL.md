@@ -2284,6 +2284,47 @@ matches), PFF 56 (64), against 4 on DFL. Enough to train and check a rule on.
 (not smoothed) ball. Then the short-possession check: v31's chain on SkillCorner and PFF with the
 DFL treatment (our gaps, blur), how many of these 46 + 56 it catches, before any retraining.
 
+### 2026-11-04 (evening): PFF loader; two kinds of PFF sequence
+
+**Two `sequence` fields.** The event files' `sequence` column was added in May 2025 (change log)
+and is coarser: in match 10502, 295 sequences against 311 in the tracking files' game events,
+a third of them holding OTB events of both teams, and a different numbering (39 of 2,145 OTB
+events share the number). The tracking files carry the original: `sequence` + `home_ball` per
+game event, `home_ball` constant inside a sequence and equal to the toucher's team in 96% of OTB
+events. The loader uses the tracking version; the event file only gives set piece type and
+possession event kind, matched by start time (2,147 / 2,147).
+
+**`tools/pff_data.py`** (cache `data/cache/pff/`, `--jobs N`, ~10 min for 64 with 4): raw (not
+smoothed) players and ball resampled 29.97 -> 25 fps into DFL's arrays, plus `pvis` / `bvis`
+(VISIBLE vs ESTIMATED), events (start, end, team, tracking sequence, kind, start time). Labels:
+the sequence's team from its first to last OTB event; between sequences the earlier team until an
+OUT event (D from it to the restart), D from the earlier end when the next starts with a set
+piece, else the earlier team until the next starts; X before kick-offs, after END, in VID.
+
+| 64 matches | poss / live min | median | < 2 s | < 5 s | D | ball present | ball visible | players visible |
+|---|---|---|---|---|---|---|---|---|
+| min | 3.2 | 5.0 s | 9% | 30% | 28% | 53% | 29% | 25% |
+| median | 4.6 | 7.1 s | 14% | 39% | 42% | 68% | 41% | 38% |
+| max | 7.5 | 10.3 s | 20% | 50% | 52% | 79% | 54% | 51% |
+| public window | 4.2 | 7.6 s | 12% | | | | | |
+
+- Possession profile close to the public window again. D is higher than SkillCorner's (25%):
+  PFF's D runs from the OUT tag to the restart touch, and restart touches come late (the taker's
+  OTB starts when he plays it).
+- The players are mostly estimated (median 38% visible), more than SkillCorner (49-66% detected).
+
+**Pattern count with the tracking sequences** (`tools/kick_shorts_pff.py`; `--event-seq` gives the
+earlier numbers): of the 172 deep long kicks followed by a < 2 s contact of the other team and the
+kicker back, **152 are their own sequence** (event-file sequences: 56). Not deep: 89 of 125.
+Short OTB runs between two of the other team: 4,067 of 8,322 are their own sequence (event file:
+2,549). So PFF's original sequences count nearly every such contact as a team possession, as the
+organisers do with #10 / #12; the 2025 column merges most of them into the kicker's possession.
+
+Cases of the pattern labelled as possessions: SkillCorner 46 (20 matches) + PFF 152 (64).
+
+**Next:** v31's chain on SkillCorner and PFF with the DFL treatment (our gaps, blur): spellF1
+overall and how many of the 46 + 152 short contacts it catches, before any retraining.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
