@@ -99,15 +99,26 @@ def load_set(name, game):
     return d, pf._meta(game)[1], d["ball"]
 
 
-def chain(d, pitch, ball):
+FOLDS = 4
+INTER = os.path.join(dd.DATA_DIR, "cache", "ext_v31")
+
+
+def fold_of(name, game):
+    """Fixed fold (0..FOLDS-1) of an external match: every 4th match of each set, in sorted order."""
+    return games_of(name).index(game) % FOLDS
+
+
+def chain(d, pitch, ball, touch_model=None, extras=None):
+    """(v25, v31); if extras is a dict, the intermediates are put in it."""
     m = deployed()
     n = len(ball)
+    tm = touch_model if touch_model is not None else m["touch"]
     ball = dd.blur_ball(ball)
     length, width = features.LENGTH, features.WIDTH
     features.LENGTH, features.WIDTH = pitch
     try:
         f = features.build_features({"players": d["players"], "ball": ball, "team": d["team"]},
-                                    events=[], touch_model=m["touch"])
+                                    events=[], touch_model=tm)
         blk = blocks(d["period"])
         sc = emissions(f, PARAMS)
         hand = np.full(n, X, dtype=np.int8)
@@ -137,6 +148,11 @@ def chain(d, pitch, ball):
         hand2, protect = ev.out_rule(hand2, f, blk, Args)
         hand2 = ev.remove_gate(hand2, pdead, blk, GATE[0], GATE[1], dd.FPS, protect)
         v31 = ev.chain(hand2, p1, p_ref, f, blk, vote)
+        if extras is not None:
+            extras.update({"f_" + k: v for k, v in f.items()})
+            extras.update(v25=v25, v31=v31, hand=hand, hand2=hand2, p1=p1, p_ref=p_ref,
+                          vote=np.asarray(vote, dtype=np.float32), pdead=pdead, ball_z=ball[:, 2],
+                          labels=d["labels"], period=d["period"])
     finally:
         features.LENGTH, features.WIDTH = length, width
     return v25, v31
@@ -223,12 +239,19 @@ def main():
     parser.add_argument("set", choices=("skillcorner", "pff"))
     parser.add_argument("games", nargs="*")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--save", action="store_true", help="cache intermediates in data/cache/ext_v31")
+    parser.add_argument("--touch-dir", help="per-fold touch networks <dir>/touch_f<k>.pt (the "
+                        "fold that holds the match out)")
+    parser.add_argument("--tag", default="v31", help="results file stem")
+    parser.add_argument("--pick", type=float, help="touch pick threshold (default touch_net.PICK_THRESHOLD)")
     args = parser.parse_args()
+    if args.pick:
+        touch_net.PICK_THRESHOLD = args.pick
     gs = args.games or games_of(args.set)
     if args.limit:
         gs = gs[:args.limit]
     os.makedirs(OUT, exist_ok=True)
-    path = os.path.join(OUT, "v31_{}.csv".format(args.set))
+    path = os.path.join(OUT, "{}_{}.csv".format(args.tag, args.set))
     done = set()
     if os.path.isfile(path):
         done = {line.split(",")[0] for line in open(path)}
@@ -239,7 +262,16 @@ def main():
             continue
         t0 = time.time()
         d, pitch, ball = load_set(args.set, g)
-        v25, v31 = chain(d, pitch, ball)
+        tm = None
+        if args.touch_dir:
+            tm = touch_net.load(os.path.join(args.touch_dir, "touch_f{}.pt".format(
+                fold_of(args.set, g))))
+        extras = {} if args.save else None
+        v25, v31 = chain(d, pitch, ball, tm, extras)
+        if args.save:
+            os.makedirs(INTER, exist_ok=True)
+            np.savez_compressed(os.path.join(INTER, "{}_{}_{}.npz".format(args.tag, args.set, g)),
+                                **extras)
         lab = d["labels"]
         s25, s31 = tr.score(lab, v25), tr.score(lab, v31)
         short = short_spells(lab)

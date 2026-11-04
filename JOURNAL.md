@@ -2360,6 +2360,43 @@ SkillCorner + PFF (broadcast-like ball, contacts labelled), (b) a short-possessi
 second stage that proposes brief other-team spells at landings, judged leave-one-match-out on
 SkillCorner + PFF and then DFL + the public window.
 
+### 2026-11-05: short possessions, (a) touch network with SC + PFF, (b) short head: both dropped
+
+Setup: 4 fixed folds over the 84 external matches (every 4th match of each set,
+`run_v31_external.fold_of`); v31's intermediates cached per match (`--save`, `data/cache/ext_v31/`).
+`tools/ours_chain.py` rebuilds v31 on our match in one process with any touch network (checked:
+0 frames differ from v31.csv). The user decides on the public spellF1.
+
+**(a) Touch network + SkillCorner + PFF** (`tools/train_touch_ext.py`, models in
+`data/cache/models/touch_ext/`): DFL as before plus the other folds' external matches, touches
+from the events (possession / OTB start, plus the release if >= 0.3 s). On held-out matches touch
+F1 rises (SC 0.63 -> 0.83, PFF 0.49 -> 0.56) but recall of possession starts falls (~0.57 -> 0.48
+at pick 0.5; ~0.3-0.4 at the deployed 0.7: less confident). v31 chain with the fold networks
+(`run_v31_external.py --touch-dir ... --pick 0.5 --tag tx`):
+
+| | v31 | (a) | up / down | short spells caught |
+|---|---|---|---|---|
+| SkillCorner (20) | 0.5989 | 0.6037 | 10 / 10 | 22 -> 18 of 213 |
+| PFF (62 of 64) | 0.5368 | 0.5725 | 54 / 8 | 85 -> 40 of 1403 |
+| public window, pick 0.7 / 0.5 / 0.35 | 0.812 | 0.614 / 0.675 / 0.679 (macro 0.933-0.943) | | |
+
+The PFF gain comes with PFF-made labels on both sides; on our match the network merges possessions
+(195-223 instead of 238) and loses 0.13-0.20 public spellF1. Dropped.
+
+**(b) Short-possession head** (`tools/short_head.py`): LightGBM per frame on v31's outputs and
+evidence seen from v31's team T vs the other O (touch probabilities, distances, co-movement, goal
+distances, ball height / speed / gaps, refiner and stage-1 P(T), vote, P(dead), position in
+v31's spell, 0.5 / 1 / 2 s context). Target: truth is O there and that spell is < 3 s. Runs of
+smoothed P > T (min length 0.2-1 s, max 4 s) inside one v31 spell go to O.
+- 4-fold CV: best +0.003 (T 0.5, 1 s; 55 / 27), nested +0.0022 (48 / 35); short spells caught
+  108 -> 164 of 1,655, with false insertions eating most of it.
+- Public window: unchanged at every setting (0.812 / 0.917); max smoothed P inside the window is
+  0.23, so it never proposes #10 / #12. Full match: 0-7 insertions. Dropped.
+
+Neither catches #10 / #12. Next (user's idea): a hand rule at the landing of a long kick, the
+team that closes on the landing point gets the ball (distance, closing speed, touch), checked on
+SkillCorner + PFF and then the public window.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
