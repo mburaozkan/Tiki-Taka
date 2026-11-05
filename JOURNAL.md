@@ -2421,6 +2421,14 @@ next change, at most 10 s). Deep-only or all kicks; margins 0-4 m.
 Dropped. v31 stays the submission. #10 / #12 remain open: on our tracking even the deep keeper
 kicks before them are found only in part.
 
+### 2026-11-06: merged Gözde's branch
+
+`gozde` merged into `mirac`: models load on CPU-only machines (`map_location`), keeper swaps by
+teleport as a separate variant (`MTAH_VARIANT=_kt`, `track_fix.fix_teleports`,
+`tools/keeper_swap.py`, `tools/teleport_diag.py`), `possession_view.py --frames / --compare`,
+`tools/diff_spots.py`, and her journal (`JOURNAL_GOZDE.md`). The default path is unchanged; v31
+stays the submission.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
