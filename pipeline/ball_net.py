@@ -156,7 +156,8 @@ def save(model, path):
 
 def load(path):
     import torch
-    saved = torch.load(path, weights_only=False)
+    saved = torch.load(path, weights_only=False,
+                       map_location=None if torch.cuda.is_available() else "cpu")
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = _net().to(dev)
     model.load_state_dict(saved["state"])

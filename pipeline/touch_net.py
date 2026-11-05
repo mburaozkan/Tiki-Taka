@@ -265,7 +265,8 @@ def save(bundle, path):
 def load(path):
     """(model, mean, std) from save(); on the GPU when there is one."""
     import torch
-    saved = torch.load(path, weights_only=False)
+    saved = torch.load(path, weights_only=False,
+                       map_location=None if torch.cuda.is_available() else "cpu")
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = _net(len(saved["mean"]), saved.get("dilations", DILATIONS)).to(dev)
     model.load_state_dict(saved["state"])

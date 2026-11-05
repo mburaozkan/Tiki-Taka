@@ -242,3 +242,162 @@ def ignore_impostors(players, team, blocks, pitch, mode="opponent"):
                                for s in (0, 1)),
              "visible": tuple(visible[graded, s].mean() for s in (0, 1))}
     return out, team, stats
+
+
+# Teleports (user, 2026-11-03, #9-#13): a slot that vanishes and reappears farther away than a
+# player can run in the gap is a different person from then on (tools/keeper_swap.py: Barcelona's
+# keeper slot reappears 98 m away after a 6 s gap, as Athletic's keeper, next to a frozen Athletic
+# "keeper"). Physics, not position, decides that a swap happened; position then decides who the new
+# piece is. A piece is a slot's run between two impossible moves: a gap or a one-frame jump. From a
+# teleport on, the piece's stay within KEEPER_ZONE_M of the other team's goal (it can slide back
+# to its own team later without a gap or a jump: #9-#13, a 2937 s piece) is that goal's keeper if
+# it lasts MIN_PIECE_S and he is deeper than every moving player there on KEEPER_DEEPEST_SHARE of
+# it; it moves to a new slot of the team defending that goal (as in fix_keepers). A still slot of that team in its box meanwhile is the
+# ghost left behind: ignored.
+TELEPORT_MIN_M = 20.0      # a reappearance at least this far from where the slot vanished...
+TELEPORT_MS = 12.0         # ...faster than a sprinting player could have run it
+JUMP_M = 5.0               # a move of at least this in one frame also ends a piece
+KEEPER_ZONE_M = 30.0       # the keeper's stay: from the reappearance while within this of the goal
+KEEPER_DEEPEST_SHARE = 0.5  # ...deeper than every other moving player on this share of it
+
+
+def _pieces(x, y, tracked):
+    """[(start, stop)] of a slot's tracked runs, also cut at one-frame jumps >= JUMP_M."""
+    out = []
+    for s, e in _runs(tracked):
+        step = np.hypot(np.diff(x[s:e]), np.diff(y[s:e]))
+        cuts = [s] + list(s + 1 + np.flatnonzero(step >= JUMP_M)) + [e]
+        out.extend(zip(cuts[:-1], cuts[1:]))
+    return out
+
+
+def fix_teleports(players, team, blocks, pitch, details=False):
+    """(players, team, stats): see the comment above. blocks = [(first, stop)] per half.
+    stats: teleports (all slots), keeper swaps flipped, their seconds, per original team, ghost
+    seconds ignored, the flipped frames (n,) bool, and with details=True every teleported piece
+    as (start, stop, length_s, stay at the other goal s, its share of the piece, deeper share,
+    flipped)."""
+    length, width = pitch
+    team = np.asarray(team)
+    px = players[:, :, 0].astype(np.float64) * length
+    py = players[:, :, 1].astype(np.float64) * width
+    tracked = ~np.isnan(px)
+    still = _still(px, py, int(STILL_S * FPS))
+    goal = _goals(px, tracked, team, blocks, length)
+    n, k = px.shape
+    teleports, flips, info = 0, [], []
+    for a, b in blocks:
+        for i in range(k):
+            pieces = _pieces(px[a:b, i], py[a:b, i], tracked[a:b, i])
+            for (ps, pe), (qs, qe) in zip(pieces, pieces[1:]):
+                lf, ff = a + pe - 1, a + qs
+                d = np.hypot(px[ff, i] - px[lf, i], py[ff, i] - py[lf, i])
+                if d < TELEPORT_MIN_M or d / ((ff - lf) / float(FPS)) <= TELEPORT_MS:
+                    continue
+                teleports += 1
+                s, e = a + qs, a + qe
+                best = (0.0, 0.0, 0.0, False)
+                for side in (0, 1):            # the team defending this goal
+                    if team[i] == side or not np.isfinite(goal[s, side]):
+                        continue
+                    with np.errstate(invalid="ignore"):
+                        depth = np.abs(px[s:e] - goal[s, side])
+                        near = np.hypot(depth[:, i], py[s:e, i] - width / 2.0) <= KEEPER_ZONE_M
+                    # the keeper's stay: from the reappearance while the piece stays near that goal
+                    # (the slot can slide back to its own team later without a gap or a jump)
+                    hi = len(near) if near.all() else int(np.argmin(near))
+                    if hi == 0:
+                        continue
+                    with np.errstate(invalid="ignore"):
+                        moving = tracked[s:s + hi] & ~still[s:s + hi]
+                    moving[:, i] = False
+                    others = np.min(np.where(moving, depth[:hi], np.inf), axis=1)
+                    deeper = (depth[:hi, i] < others).mean()
+                    ok = hi >= MIN_PIECE_S * FPS and deeper >= KEEPER_DEEPEST_SHARE
+                    if ok:
+                        flips.append((i, s, s + hi, side, lf + 1))
+                    if hi >= best[0] * FPS:
+                        best = (hi / float(FPS), hi / float(e - s), deeper, ok)
+                info.append((s, e, (e - s) / float(FPS)) + best)
+    out = players.copy()
+    ghost = np.zeros((n, k), dtype=bool)
+    flipped = np.zeros(n, dtype=bool)
+    extra = []                                # (column (n, 3), team) per added slot
+
+    def bridge(p0, p1, m):
+        """m frames moving in a straight line from p0 to p1 (x, y normalised; speed m/s)."""
+        col = np.full((m, players.shape[2]), np.nan, dtype=players.dtype)
+        frac = (np.arange(m) + 1.0) / (m + 1.0)
+        col[:, 0] = p0[0] + (p1[0] - p0[0]) * frac
+        col[:, 1] = p0[1] + (p1[1] - p0[1]) * frac
+        if players.shape[2] > 2:
+            dist = np.hypot((p1[0] - p0[0]) * length, (p1[1] - p0[1]) * width)
+            col[:, 2] = dist / ((m + 1.0) / FPS)
+        return col
+
+    filled = 0
+    for i, s, e, side, gap0 in flips:
+        flipped[s:e] = True
+        h0, h1 = next((x, y) for x, y in blocks if x <= s < y)
+        # 1. the flipped keeper: his own slot of the defending team from the reappearance
+        col = np.full((n, players.shape[2]), np.nan, dtype=players.dtype)
+        col[s:e] = players[s:e, i]
+        out[s:e, i] = np.nan
+        extra.append((col, side))
+        # 2. the defending team's ghost: removed while the real keeper plays; during the swap
+        #    gap (no real keeper tracked anywhere) it walks from where it froze to where he
+        #    reappears, instead of standing frozen (user, 2026-11-05) or vanishing
+        with np.errstate(invalid="ignore"):
+            depth = np.abs(px[s:e] - goal[s, side])
+            box = tracked[s:e] & (depth <= BOX_DEPTH_M) & (np.abs(py[s:e] - width / 2.0) <= BOX_HALF_M)
+        here = box & still[s:e] & (team == side)[None, :]
+        ghost[s:e] |= here
+        for g in np.flatnonzero(here.any(axis=0)):
+            lo = s + int(np.flatnonzero(here[:, g])[0])
+            with np.errstate(invalid="ignore"):
+                in_box = (np.abs(px[:, g] - goal[s, side]) <= BOX_DEPTH_M) & \
+                         (np.abs(py[:, g] - width / 2.0) <= BOX_HALF_M)
+            frozen = still[:, g] & in_box
+            while lo > gap0 and frozen[lo - 1]:
+                lo -= 1
+            ghost[lo:s, g] = False
+            if lo < s:
+                out[lo:s, g] = bridge(players[lo - 1, g], players[s, i], s - lo)
+                filled += s - lo
+        # 3. the swapped slot's own keeper (it was his slot before the gap): from the gap until
+        #    the slot is back at its own goal there is no position for him at all, and the slot
+        #    slides back across the pitch: bridge him from where he vanished to where he returns
+        own = int(team[i])
+        last = gap0 - 1
+        if last >= h0 and np.isfinite(goal[last, own]) and \
+                np.hypot(px[last, i] - goal[last, own], py[last, i] - width / 2.0) <= KEEPER_ZONE_M:
+            stop = min(h1, e + int(60 * FPS))
+            with np.errstate(invalid="ignore"):
+                home = tracked[e:stop, i] & (np.hypot(px[e:stop, i] - goal[e:stop, own],
+                                                      py[e:stop, i] - width / 2.0) <= KEEPER_ZONE_M)
+                step = np.hypot(np.diff(px[e:stop, i], append=np.nan),
+                                np.diff(py[e:stop, i], append=np.nan))
+            home &= step <= TELEPORT_MS / FPS                       # not still sliding back
+            settled = (np.convolve(home.astype(int), np.ones(FPS, dtype=int), "valid") == FPS
+                       if len(home) >= FPS else np.zeros(0, dtype=bool))   # stay ends at half end
+            if settled.any():                                       # back and calm for 1 s
+                ret = e + int(np.argmax(settled))
+                out[e:ret, i] = np.nan
+                col = np.full((n, players.shape[2]), np.nan, dtype=players.dtype)
+                col[gap0:ret] = bridge(players[last, i], players[ret, i], ret - gap0)
+                extra.append((col, own))
+                filled += ret - gap0
+    out[ghost] = np.nan
+    stats = {"teleports": teleports, "pieces": len(flips),
+             "seconds": sum(e - s for _, s, e, _, _ in flips) / float(FPS),
+             "per_team": (sum(team[i] == 0 for i, _, _, _, _ in flips),
+                          sum(team[i] == 1 for i, _, _, _, _ in flips)),
+             "ghost_seconds": ghost.any(axis=1).sum() / float(FPS),
+             "bridged_seconds": filled / float(FPS), "flipped": flipped}
+    if details:
+        stats["details"] = info
+    if not extra:
+        return out, team, stats
+    cols = np.stack([c for c, _ in extra], axis=1)
+    new_team = np.concatenate([team, np.array([t for _, t in extra], dtype=team.dtype)])
+    return np.concatenate([out, cols], axis=1), new_team, stats

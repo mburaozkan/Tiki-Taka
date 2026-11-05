@@ -92,7 +92,8 @@ def models(source, kinds, retrain=False, qnorm=False, domain_weight=False):
         import lightgbm as lgb
         out["gbm"] = lgb.Booster(model_file=paths["gbm"])
     if "gru" in kinds:
-        saved = torch.load(paths["gru"], weights_only=False)
+        saved = torch.load(paths["gru"], weights_only=False,
+                       map_location=None if torch.cuda.is_available() else "cpu")
         dev = "cuda" if torch.cuda.is_available() else "cpu"
         net = _net(saved["n_in"]).to(dev)
         net.load_state_dict(saved["state"])

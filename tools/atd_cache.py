@@ -69,7 +69,8 @@ def variant():
     via pipeline.run.write_submission, the v25 inputs cache); "kf" in it applies
     pipeline.track_fix.fix_keepers to the tactical ATD of our match, "_ki" / "_ko" / "_kx" / "_kd" /
     "_ke" apply pipeline.track_fix.ignore_impostors (the user's rule) in mode opponent / own /
-    own_flip / own_flip_deepest / own_flip_evidence.
+    own_flip / own_flip_deepest / own_flip_evidence; "_kt" applies pipeline.track_fix.fix_teleports
+    (a keeper slot reappearing faster than a player can run goes to the team defending that goal).
     Empty: the raw ATD."""
     return os.environ.get("MTAH_VARIANT", "")
 
@@ -95,6 +96,12 @@ def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False, 
         blocks = [(a, b + 1) for _, a, b in half_video_blocks(game)]
         arrays["players"], arrays["team"], _ = ignore_impostors(
             arrays["players"], arrays["team"], blocks, GAMES[game]["pitch"], modes[variant()])
+    if variant() == "_kt":
+        from games import GAMES, half_video_blocks
+        from pipeline.track_fix import fix_teleports
+        blocks = [(a, b + 1) for _, a, b in half_video_blocks(game)]
+        arrays["players"], arrays["team"], _ = fix_teleports(arrays["players"], arrays["team"],
+                                                             blocks, GAMES[game]["pitch"])
     if "kf" in variant():
         from games import GAMES, half_video_blocks
         from pipeline.track_fix import fix_keepers

@@ -2,6 +2,8 @@
 
     python tools/possession_view.py 9 12                  # true possessions #9 to #12 (+/- 5 s)
     python tools/possession_view.py 1 2 --pad 8
+    MTAH_VARIANT=_kt python tools/possession_view.py --frames 184280 30 \
+        --sub evaluation/results/v31_kt.csv --compare evaluation/results/v31.csv --no-keepers
     python tools/possession_view.py 14 15 --sub evaluation/results/v30_d1n_add.csv   # dh1
     set MTAH_VARIANT=_kf  (PowerShell: $env:MTAH_VARIANT="_kf")  then as above: the keeper-fixed
                           tracking (pipeline/track_fix.py) and v30_kf.csv (build that first)
@@ -147,15 +149,23 @@ def strip(ax, codes, t, y, label, h=0.17):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("first", type=int, help="first true possession (#, as in spell_table)")
+    parser.add_argument("first", type=int, nargs="?",
+                        help="first true possession (#, as in spell_table)")
     parser.add_argument("last", type=int, nargs="?", help="last one (default: first)")
     parser.add_argument("--pad", type=float, default=5.0, help="seconds shown either side")
     parser.add_argument("--sub", default=SUB, help="submission to compare with the truth")
+    parser.add_argument("--frames", type=float, nargs=2, metavar=("START", "SECONDS"),
+                        help="any stretch of the match instead of public possessions: video frame "
+                             "START (as tools/diff_spots.py prints) and SECONDS shown")
+    parser.add_argument("--compare", help="a second submission, drawn in the top strip instead of "
+                                          "the truth (which exists only in the public window)")
     parser.add_argument("--keepers", action=argparse.BooleanOptionalAction, default=True,
                         help="keeper visible per team (pipeline/track_fix.keeper_status) as two "
                              "strips; on the pitch the raw tracking, the players that rule ignores "
                              "(the other team's doubled or swapped keeper) drawn as grey crosses")
     args = parser.parse_args()
+    if args.frames is None and args.first is None:
+        parser.error("give public possession numbers or --frames START SECONDS")
     last = args.last or args.first
 
     import matplotlib.pyplot as plt
@@ -164,7 +174,8 @@ def main():
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
     runs = pm.valid_runs(gt)
     spells = pm.possession_spells(gt, runs)
-    if not 1 <= args.first <= last <= len(spells):
+    gt = np.where(gt < 0, pm.X, gt)             # outside the public window: no truth
+    if args.frames is None and not 1 <= args.first <= last <= len(spells):
         sys.exit("possessions are numbered 1..{}".format(len(spells)))
     sub = pm.label_codes(pm.read_label_csv(args.sub))
     s = signals()
@@ -173,10 +184,17 @@ def main():
         if not np.array_equal(s["codes"][live], sub[live]):
             print("note: rebuilding v30 from the params here does not reproduce", args.sub)
 
-    a = max(spells[args.first - 1][0] - int(args.pad * FPS), 0)
-    b = min(spells[last - 1][1] + int(args.pad * FPS), len(gt))
-    run = next(r for r in runs if r[0] <= spells[args.first - 1][0] < r[1])
-    a, b = max(a, run[0]), min(b, run[1])
+    if args.frames is not None:
+        a = int(args.frames[0])
+        b = min(a + int(args.frames[1] * FPS), len(gt))
+    else:
+        a = max(spells[args.first - 1][0] - int(args.pad * FPS), 0)
+        b = min(spells[last - 1][1] + int(args.pad * FPS), len(gt))
+        run = next(r for r in runs if r[0] <= spells[args.first - 1][0] < r[1])
+        a, b = max(a, run[0]), min(b, run[1])
+    other = pm.label_codes(pm.read_label_csv(args.compare)) if args.compare else None
+    if other is not None:
+        other = np.where(other < 0, pm.X, other)
     t = (np.arange(a, b) - a) / float(FPS)
     f = s["f"]
 
@@ -186,11 +204,15 @@ def main():
     axes = [fig.add_subplot(grid[0, 0])]
     axes += [fig.add_subplot(grid[i, 0], sharex=axes[0]) for i in range(1, 6)]
     pitch_ax = fig.add_subplot(grid[:, 1])
-    fig.suptitle("public possessions #{}-#{}  ({} vs truth)".format(
-        args.first, last, os.path.splitext(os.path.basename(args.sub))[0]))
+    name = os.path.splitext(os.path.basename(args.sub))[0]
+    top = os.path.splitext(os.path.basename(args.compare))[0] if args.compare else "truth"
+    where = ("frames {}+{:.0f} s".format(a, (b - a) / float(FPS)) if args.frames is not None
+             else "public possessions #{}-#{}".format(args.first, last))
+    fig.suptitle("{}  ({} vs {})   variant: {}".format(
+        where, name, top, os.environ.get("MTAH_VARIANT", "") or "raw tracking"))
 
     ax = axes[0]
-    strip(ax, gt[a:b], t, 0.80, "truth")
+    strip(ax, (other if other is not None else gt)[a:b], t, 0.80, top)
     strip(ax, sub[a:b], t, 0.61, os.path.splitext(os.path.basename(args.sub))[0])
     hand = np.where(np.isin(s["hand"][a:b], (pm.H, pm.A)), pm.X, pm.D)
     strip(ax, hand, t, 0.42, "hand D")
@@ -198,9 +220,11 @@ def main():
         from atd_cache import load_arrays
         from games import GAME, half_video_blocks
         from pipeline.track_fix import keeper_status
-        raw = load_arrays(raw=True)
-        blk = [(x, y + 1) for _, x, y in half_video_blocks(GAME)]
         mode = os.environ.get("MTAH_VARIANT", "")
+        # with _kt the strips and the pitch show the corrected tracking the pipeline used
+        raw = ({"players": s["players"], "team": np.asarray(s["team"])} if mode == "_kt"
+               else load_arrays(raw=True))
+        blk = [(x, y + 1) for _, x, y in half_video_blocks(GAME)]
         cases = None
         if mode in ("_ko", "_kx", "_kd", "_ke"):   # the team's own "keeper" is the one ignored
             visible, ignored, cases = keeper_status(raw["players"], raw["team"], blk, s["pitch"],
@@ -211,6 +235,8 @@ def main():
                 cases = None            # the real keeper keeps the other team's colour
         else:
             visible, ignored = keeper_status(raw["players"], raw["team"], blk, s["pitch"])
+            if mode == "_kt":       # crosses are the old rule's (_ki) suspects, not removed by _kt
+                ignored = np.zeros_like(ignored)
         strip(ax, np.where(visible[a:b, 0], pm.H, pm.X), t, 0.23, "H keeper")
         strip(ax, np.where(visible[a:b, 1], pm.A, pm.X), t, 0.04, "A keeper")
     for i, (sa, sb, k) in enumerate(spells):
@@ -326,8 +352,9 @@ def main():
         ball_dot.set_offsets(ball.reshape(1, 2) if not np.isnan(ball[0]) else np.empty((0, 2)))
         keepers = ("" if visible is None else "\nkeeper visible: H {}  A {}   (x = ignored)".format(
             "yes" if visible[i, 0] else "NO", "yes" if visible[i, 1] else "NO"))
-        info.set_text("{:.1f} s   truth {}   ours {}   P(home) {:.2f}{}{}".format(
-            sec, letters[int(gt[i])], letters[int(sub[i])], s["p_sub"][i],
+        info.set_text("{:.1f} s   {} {}   {} {}   P(home) {:.2f}{}{}".format(
+            sec, top, letters[int((other if other is not None else gt)[i])], name,
+            letters[int(sub[i])], s["p_sub"][i],
             "" if not np.isnan(ball[0]) else "   NO BALL", keepers))
         for c in cursors:
             c.set_xdata([sec, sec])
