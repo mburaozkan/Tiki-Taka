@@ -2535,6 +2535,27 @@ our match (v31_kt tracking). Grid: switch 10-35 x alpha 0.3-1.0 x run-vote weigh
   public; the gains are about a tenth of the full-match noise band (0.04).
 - **v31_kt's decoder settings stay.** Next: handover / backdating grid, then the gate grid.
 
+### 2026-11-06: re-tune (2), remove gate against phantom D (`tools/retune_chain.py gate`)
+
+The test for phantom D found above: the remove gate's threshold T (0-0.6) x a length cap (none,
+6, 8, 12 s; phantom stretches are short, median 6 s, true ones 17-21 s), on all 84 external
+matches, rest of v31 unchanged. Profile first: below head P(dead) 0.3 are 37-41% of the remaining
+phantom stretches but also 10-12% of the true ones, and true stretches outnumber phantom ~8:1.
+
+| setting | SC + PFF (84) | vs v31 | up/down |
+|---|---|---|---|
+| v31 (T 0.1, no cap) | 0.5514 | | |
+| T 0.6, <= 8 s (best) | 0.5522 | +0.0007 | 46/37 |
+| T 0.5, <= 12 s | 0.5520 | +0.0005 | 38/43 |
+| T 0.2, no cap | 0.5517 | +0.0003 | 39/34 |
+| T 0.3, no cap | 0.5506 | -0.0008 | 29/50 |
+| nested 4-fold | 0.5514 | 0.0000 | 40/44 |
+
+- All within +/- 0.001, up/down about even: no gain. **The gate stays at T 0.1 with the ball-out
+  rule.** Not taken to DFL / public since nothing passed here.
+- Phantom D (up to +0.058) needs new evidence that tells slow live play from a stoppage; the head's
+  P(dead) can't separate them on broadcast data.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
