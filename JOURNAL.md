@@ -2484,6 +2484,33 @@ Every predicted change of one kind moved by a constant (spellF1, matches up / do
   there would push #6 / #14 / #16 / #17 the wrong way. **Not applied.**
 - What's left on boundaries is the spread, i.e. the evidence at each change, not a timing rule.
 
+### 2026-11-06: dead-ball errors on SkillCorner / PFF (`tools/dead_external.py`), measured only
+
+As `dead_overcall.py` on DFL, but on real broadcast stoppages (cached v31 predictions). True live
+called D: early / late (restart called late) / phantom (a D stretch that overlaps no true
+stoppage). True D called live: edge (the stoppage has some D, its edges differ) / missed (a true
+stoppage >= 2 s with no D at all). Oracle = that kind set to the truth (upper bound of a fix).
+
+| | SkillCorner (20) | PFF (64) | public (v31_kt) |
+|---|---|---|---|
+| D truth / called | 26.4% / 29.9% | 41.3% / 43.3% | 19.6% / 15.8% |
+| early (of live) | 3.3%, +0.038 | 2.7%, +0.028 | 0 |
+| late (of live) | 3.9%, **+0.072** | 4.2%, +0.051 | 0 |
+| phantom (of live) | 2.9%, +0.045 | 3.8%, **+0.058** | 0 |
+| edge (of D) | 11.1%, +0.032 | 8.5%, +0.033 | 10.2%, +0.026 |
+| missed (of D) | 4.0%, +0.016 | 2.0%, +0.010 | 9.4% (S1), -0.024 |
+| phantom stretches / 90 min | 11.4 (median 11.9 s) | 10.4 (median 5.8 s) | |
+| stoppages >= 2 s missed entirely | 6.0% | 6.3% | 1 of 4 |
+| v31 spellF1 | 0.5989 | 0.5366 | 0.7742 |
+
+- The two big pots are **late restarts** and **phantom D**, as on DFL. Late restarts depend on where
+  a provider puts the restart (the boundary check above: the public window has our restarts early,
+  not late), so they can't be tuned here. **Phantom D doesn't depend on that** (a D stretch with no
+  stoppage at all is wrong in every definition): about 10-11 per 90 min, up to +0.058.
+- Missing a stoppage completely is rare (6%) and worth little (+0.01 to +0.016).
+- Next: test a fix for phantom D (remove-gate threshold, on top of the re-tuned decoder) on
+  SkillCorner + PFF, then DFL and the public window. Nothing applied yet.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
