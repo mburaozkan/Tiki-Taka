@@ -2448,6 +2448,42 @@ Next (agreed): (1) boundary timing, i.e. are our changes systematically early or
 type, on the external sets; (2) re-tune the decoder and post-step settings on the whole v31 chain;
 (3) dead-ball timing on PFF / SkillCorner, measured first and applied only if it helps.
 
+### 2026-11-06: boundary timing, are our changes early or late? (`tools/boundary_offsets.py`)
+
+v31 on SkillCorner (20) and PFF (64) from the cached intermediates; for every true change the
+nearest predicted change of the same kind within 5 s, offset = predicted - true (> 0: late).
+Kinds: team (H <-> A), start (D -> live, restart), stop (live -> D). The public window is v31_kt.
+
+| set | kind | n | matched | median | IQR | within 0.5 s |
+|---|---|---|---|---|---|---|
+| SkillCorner | team | 3059 | 64% | +0.00 s | -0.92 to +0.40 | 46% |
+| SkillCorner | start | 1837 | 50% | +0.84 s | 0.00 to +1.96 | 32% |
+| SkillCorner | stop | 1833 | 56% | -0.20 s | -1.10 to +0.28 | 35% |
+| PFF | team | 11658 | 57% | -0.12 s | -1.24 to +0.48 | 39% |
+| PFF | start | 6206 | 58% | +0.60 s | -0.40 to +1.64 | 24% |
+| PFF | stop | 6226 | 56% | -0.48 s | -1.52 to +0.16 | 33% |
+| public | team | 12 | 67% | -0.18 s | -0.61 to +0.04 | 62% |
+| public | start | 4 | 75% | -0.60 s | -0.94 to -0.54 | 33% |
+| public | stop | 4 | 50% | +0.20 s | | 100% |
+
+Every predicted change of one kind moved by a constant (spellF1, matches up / down):
+
+| shift | SkillCorner | PFF |
+|---|---|---|
+| team -0.2 / +0.1 / +0.2 s | -0.0031 / -0.0006 / -0.0020 | -0.0055 / +0.0013 / +0.0014 |
+| start -1.0 / -0.6 / -0.2 s | +0.0061 (19/0) / +0.0052 / +0.0026 | +0.0018 / +0.0019 (44/13) / +0.0008 |
+| stop +0.2 / +0.4 s | +0.0008 / +0.0010 | +0.0012 / +0.0022 (50/6) |
+
+- **Team changes have no bias** (median 0 / -0.1 s); the loss is spread (IQR about 1.3 s), not a
+  constant lag. A shift doesn't help (best +0.001). Backdating already took the systematic part.
+- **Restarts are late and stops early on both external sets** (we call D about 0.6 s too long on
+  each side), and shifting them gains a little there (up to +0.006 SkillCorner, +0.002 PFF).
+  But on the public window it is the other way round: restarts 0.6 s early, stops 0.2 s late
+  (n = 4 each). So the external sets mark D differently from the organisers: their D runs from an
+  OUT tag to the restart touch, which is wider than the tracking's ball-dead flag. A shift tuned
+  there would push #6 / #14 / #16 / #17 the wrong way. **Not applied.**
+- What's left on boundaries is the spread, i.e. the evidence at each change, not a timing rule.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
