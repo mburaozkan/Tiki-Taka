@@ -114,6 +114,7 @@ column gives the command for the current code.
 | v30 | submission 2026-10-29 to 2026-10-30: v29_bd_b under its own version number (byte-identical). The dead-ball head candidate that used to be called v30 is now **dh1** (`v30_d1n_add.csv`) | 263 | 40% | 37.4% | 0.812 / 0.901 | v29's chain, then `python tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v30` |
 | v31 | submission 2026-10-30 to 2026-11-06: v30 + dead-ball head (d1n, add-only) + remove gate (a D stretch with mean head P(dead) < 0.1 is made live) protected by the ball-out rule (never a stretch with the ball seen out of play). DFL 0.6295 (+0.054 vs v30, 7/0); checked on the full match by video | 238 | 40% | 48.0% | 0.812 / 0.917 | v29's chain (v25, v29 builds), then `python tools/eval_dead_v30.py --ours 0.5 0.5 25 --gate 0.1 0 --protect --name v31` (models/dead_d1n_s0..2.pt; rebuild byte-identical, ef2ea808…) |
 | **v31_kt** | **submission (since 2026-11-06): v31's chain on the keeper-swap-corrected tracking (`track_fix.fix_teleports`, Gözde). Changes 27.6 s of the match; the public loss is #9–#13 only, where v31 scored on a fake H spell made by the swap** | 233 | 39% | 48.0% | **0.774 / 0.926** | `$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --name v31` -> `v31_kt.csv` (byte-identical, a62eb010…) |
+| **v31_d1_kt** | **working base (since 2026-11-06): v31_kt with the dead-ball head retrained on DFL + SkillCorner + PFF (models/dead_ext_d1_s0..1.pt) in place of d1n. SkillCorner +0.007 (18/2), PFF +0.017 (62/2), DFL -0.016 (1/6)** | 225 | 39% | 48.7% | **0.800 / 0.939** | `$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --dead models/dead_ext_d1 --name v31_d1` (byte-identical, 96e5f0fb…) |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -2587,6 +2588,24 @@ leave one DFL match out (6 DFL + 84 external); our match (DFL + all 84, MTAH_VAR
   public window our D was too short at both ends (boundary check above), the same direction as the
   broadcast sets (4 stoppages only). The blend doesn't split the difference.
 - **v31_d1_kt.csv** written (valid): candidate only, decision open. v31_kt stays the submission.
+
+### 2026-11-06: v31_d1_kt is the working base; strategy for the last days
+
+**Decision (user):** v31_d1_kt is the base we build on. Rebuild from the repo:
+`$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --dead models/dead_ext_d1 --name v31_d1`
+(new `--dead` option; the two models are committed), byte-identical (96e5f0fb…).
+
+**Strategy (agreed):** the external matches are our only labelled source, so we optimise them.
+91 labelled matches now (DFL 7 + SkillCorner 20 + PFF 64), but most learned parts were trained on
+DFL alone. Plan: retrain the learned pipeline bottom-up on all of them, then re-tune the decoder once.
+1. dead-ball head (done, above);
+2. first stage (GBM + GRU blend), aimed at **the small touches / short possessions (main goal)**;
+3. team refiner on the new first stage; 4. touch network again, with 2-3 around it;
+5. decoder re-tune; freeze around Nov 14, technical document, fresh-clone rebuild.
+Rule: adopt a step if SkillCorner + PFF on held-out folds go up clearly (most matches up) and public
+drops by no more than ~0.04; DFL (leave one out) is reported, not a veto (its labels are partly
+ours: the controlled filter, the animated dead ball). Team-side and dead-side effects reported
+separately, since the broadcast sets' D edges are defined more widely than the organisers'.
 
 ## Current situation
 

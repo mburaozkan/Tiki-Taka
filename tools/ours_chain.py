@@ -2,6 +2,8 @@
 
     python tools/ours_chain.py                       # rebuild v31, check it equals v31.csv
     python tools/ours_chain.py --touch PATH --name N # v31 with another touch network -> N.csv
+    python tools/ours_chain.py --dead models/dead_ext_d1 --name v31_d1   # the working base (with
+                                                     # MTAH_VARIANT=_kt -> v31_d1_kt.csv)
 
 Same steps as the committed rebuild (tools/in_domain_team.py --ours --source dfl+decoded
 --weights 0.5, tools/tune_refine.py --ours, tools/eval_dead_v30.py --ours 0.5 0.5 25 --gate 0.1 0
@@ -38,8 +40,10 @@ class Args:
     protect, hold = True, 0.0
 
 
-def ours_v31(touch_path=None):
-    """(codes, extras) of v31 on our match with the given touch network (default: deployed)."""
+def ours_v31(touch_path=None, dead_prefix=None):
+    """(codes, extras) of v31 on our match with the given touch network (default: deployed).
+    dead_prefix: dead-ball head models <prefix>_s*.pt (no P(dead) input, e.g. models/dead_ext_d1,
+    tools/train_ext_heads.py) in place of dead_d1n."""
     import lightgbm as lgb
     from games import GAME, half_video_blocks
     from atd_cache import load_arrays
@@ -69,8 +73,15 @@ def ours_v31(touch_path=None):
     xs = (refine.inputs(p1, hand, f, cols), refine.inputs(p1, hand, f, cols, True))
     p_ref = np.mean([refine.predict(b, xs[0], xs[1], n) for b in bundles], axis=0)
     vote = tr.run_vote(f, ev.VOTE)
-    dead = [refine.load(os.path.join(ROOT, "models", "dead_{}_s{}.pt".format(ev.DEAD_TAG, k)))
-            for k in range(ev.DEAD_SEEDS)]
+    if dead_prefix:
+        import glob
+        paths = sorted(glob.glob(os.path.join(ROOT, dead_prefix + "_s*.pt")))
+        if not paths:
+            raise SystemExit("no models " + dead_prefix + "_s*.pt")
+        dead = [refine.load(p) for p in paths]
+    else:
+        dead = [refine.load(os.path.join(ROOT, "models", "dead_{}_s{}.pt".format(ev.DEAD_TAG, k)))
+                for k in range(ev.DEAD_SEEDS)]
     refine.BIN = dead[0][0].cfg["BIN"]
     xd = (refine.dead_inputs(p1, hand, f, cols, False, False),
           refine.dead_inputs(p1, hand, f, cols, True, False))
@@ -102,11 +113,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--touch")
     parser.add_argument("--name")
+    parser.add_argument("--dead", help="dead-ball head prefix, e.g. models/dead_ext_d1")
     parser.add_argument("--pick", type=float, help="touch pick threshold (default touch_net.PICK_THRESHOLD)")
     args = parser.parse_args()
     if args.pick:
         touch_net.PICK_THRESHOLD = args.pick
-    codes, _ = ours_v31(args.touch)
+    codes, _ = ours_v31(args.touch, args.dead)
     from pipeline.run import RESULTS_DIR
     ref = pm.label_codes(pm.read_label_csv(os.path.join(RESULTS_DIR, "v31.csv")))
     print("frames differing from v31.csv: {:.3f}%".format(100 * np.mean(codes != ref)))
