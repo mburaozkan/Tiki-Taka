@@ -2511,6 +2511,30 @@ stoppage >= 2 s with no D at all). Oracle = that kind set to the truth (upper bo
 - Next: test a fix for phantom D (remove-gate threshold, on top of the re-tuned decoder) on
   SkillCorner + PFF, then DFL and the public window. Nothing applied yet.
 
+### 2026-11-06: decoder re-tune on the whole v31 chain, (1) team decoder (`tools/retune_chain.py team`)
+
+v31's settings were each tuned on DFL one step at a time, before the dead-ball head and the gate.
+`tools/retune_chain.py` re-runs v31's chain after the dead-ball step from the cached intermediates
+on all 84 external matches (SkillCorner 20 + PFF 64; nested = setting chosen on 3 of the 4 fixed
+folds, scored on the 4th); `tools/retune_check.py` scores chosen settings on DFL (7, held out) and on
+our match (v31_kt tracking). Grid: switch 10-35 x alpha 0.3-1.0 x run-vote weight 0-3 (112).
+
+| setting | SC + PFF (84) | up/down | DFL | up/down | public spF1 / mF1 | full poss |
+|---|---|---|---|---|---|---|
+| v31 (switch 20, alpha 0.5, vote 2) | 0.5514 | | 0.6295 | | 0.774 / 0.926 | 233 |
+| switch 20, alpha 0.3, vote 0 (best) | +0.0058 | 57/27 | -0.0020 | 3/4 | 0.772 / 0.920 | 220 |
+| vote 0 | +0.0052 | 55/29 | -0.0055 | 2/5 | 0.772 / 0.920 | 217 |
+| vote 1 | | | 0.0000 | 4/3 | 0.774 / 0.926 | 226 |
+| switch 35, vote 1 | +0.0056 | 59/25 | -0.0022 | 2/5 | 0.772 / 0.920 | 211 |
+| switch 24, vote 1 | +0.0048 | 64/20 | +0.0024 | 5/2 | 0.772 / 0.920 | 222 |
+| nested (84) | +0.0044 | 51/33 | | | | |
+
+- The surface is flat: switch 17-35 all within 0.001. The only real lever is the touch-run vote:
+  the broadcast sets prefer less of it, DFL (where it was chosen) prefers it as it is.
+- Every candidate merges possessions on our match (211-226 instead of 233) and none gains on
+  public; the gains are about a tenth of the full-match noise band (0.04).
+- **v31_kt's decoder settings stay.** Next: handover / backdating grid, then the gate grid.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
