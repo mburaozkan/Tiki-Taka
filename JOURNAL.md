@@ -2556,6 +2556,38 @@ phantom stretches but also 10-12% of the true ones, and true stretches outnumber
 - Phantom D (up to +0.058) needs new evidence that tells slow live play from a stoppage; the head's
   P(dead) can't separate them on broadcast data.
 
+### 2026-11-06: re-tune (3) handover / backdating; second-stage heads retrained with SkillCorner + PFF
+
+**Handover / backdating grid** (`retune_chain.py post`, 540 settings, 84 external matches): best is
+backdating off + handover slow 2.5 m/s, +0.0023 (58/25; nested the same). Backdating is the step
+that fixed #2 / #15 on public and won on DFL, so **it stays**; the gain is noise-sized.
+
+**Retrained heads** (`tools/ext_inputs.py` builds the second-stage inputs of the 84 external
+matches; `tools/train_ext_heads.py`). refine_v29 (team) and dead_d1n were trained on DFL only, whose
+truth merges brief contacts (our controlled filter) and whose dead ball we animate. Same
+architecture and inputs, trained on DFL + SkillCorner + PFF, 2 seeds. Tests: SkillCorner / PFF on
+held-out folds (trained on DFL + the other 3 folds); DFL never seen (trained on external only) and
+leave one DFL match out (6 DFL + 84 external); our match (DFL + all 84, MTAH_VARIANT=_kt).
+
+| head | SkillCorner | PFF | DFL never seen | DFL leave one out | public spF1 / mF1 | full poss / D |
+|---|---|---|---|---|---|---|
+| v31_kt | 0.5989 | 0.5366 | 0.6295 | 0.6295 | 0.774 / 0.926 | 233 / 48.0% |
+| team refiner t1 | +0.0051 (15/5) | +0.0088 (53/11) | -0.0066 (2/5) | | 0.761 / 0.923 | 231 / 48.0% |
+| **dead head d1** | **+0.0068 (18/2)** | **+0.0172 (62/2)** | -0.0261 (0/7) | -0.0157 (1/6) | **0.800 / 0.939** | 225 / 48.7% |
+| dead 50/50 with d1n | +0.0004 (10/10) | +0.0050 (56/7) | | -0.0101 (1/6) | | |
+
+- **Short possessions caught: unchanged** with either head (SkillCorner 22 of 213, PFF 86 of 1,442).
+  The team refiner wasn't what blocked them; it's the evidence at the change plus the switch cost.
+- The team refiner gains a little on the broadcast sets and loses on DFL and public: **not adopted**.
+- The dead head is the clear gain on the broadcast sets and on public, and a clear loss on DFL. On
+  public it changes one thing: the spurious 3.0 s A between #15 and #16 (a true stoppage) is gone
+  (#15 0.83 -> 0.73, still all thresholds; 14 -> 13 predicted possessions).
+- Why they disagree: SkillCorner / PFF mark D from an out tag to the restart touch (wider), DFL from
+  the provider's ball-status flag. The organisers' truth is a tracking flag (like DFL's), but on the
+  public window our D was too short at both ends (boundary check above), the same direction as the
+  broadcast sets (4 stoppages only). The blend doesn't split the difference.
+- **v31_d1_kt.csv** written (valid): candidate only, decision open. v31_kt stays the submission.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
