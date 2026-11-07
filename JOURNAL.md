@@ -3124,6 +3124,13 @@ was built on ours (v31_d1: public 0.80, external 0.55-0.61). DFL would separate 
 first stage and refiner were trained on DFL (in-sample there), so a fair DFL test needs the leak-free
 first stage. Running: the net without ball height and keeper hold (c1nz).
 
+**c1nz (ball height and keeper hold zeroed):** external nearly the same (nested +0.0702 / +0.0973,
+84/0; best 0.7148 / 0.7353), public **worse**: 0.361 alone, 0.427 with D fixed (c1: 0.443 / 0.457);
+on public live frames team right 81% (c1 90%), true D called D 43%. The two shifted inputs are not
+the cause. So the problem isn't a few odd channels: the net confidently overrules the in-domain
+first-stage evidence (same inputs that give the base 96% team accuracy) with what it learned from
+SkillCorner / PFF. That points to the definition / domain of the external labels as a whole.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
