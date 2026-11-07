@@ -243,126 +243,142 @@ def intercept_inputs(i, side, ball, players, team, L, W, picks, pick_side, ball_
     return x
 
 
-def match_rows(c, f, base, pdead, d, ball, pitch, cols, lab=None):
-    """(x, meta, names) of the candidates of one match. d: players, team, period (keeper sides);
-    ball: blurred, normalised. lab None: no truth (meta label 0)."""
+def match_ctx(c, f, base, pdead, d, ball, pitch, cols):
+    """Per-match arrays the per-touch inputs read."""
     from pipeline import features
     n = len(base)
-    if lab is None:
-        lab = np.full(n, X, dtype=np.int8)
-    L, W = pitch
-    players, team = d["players"], d["team"]
-    sign_home = attack_sign(d, d["period"])
-    q = np.clip(c["p_ref"], 1e-4, 1 - 1e-4)
-    ph1 = c["p1"][:, H] / np.maximum(c["p1"][:, H] + c["p1"][:, A], 1e-6)
-    tp = np.stack([f["touch_p_home"], f["touch_p_away"]], axis=1).astype(np.float64)
-    picks = np.flatnonzero(f["touch"] != 0)
-    pick_side = np.where(f["touch"][picks] > 0, 0, 1)
-    starts = true_starts(lab)
-    st_f = np.array([s[0] for s in starts])
-    st_k = np.array([s[1] for s in starts])
-    half = int(round(PEAK_HALF_S * FPS))
-    bef = int(round(BEFORE_S * FPS))
-    lab_k = int(round(LABEL_S * FPS))
-    offs = [int(round(o * FPS)) for o in OFFS_S]
-    # base spell start per frame (for "how long has O had it")
     chg = np.concatenate(([0], np.flatnonzero(np.diff(base) != 0) + 1))
     spell_start = np.zeros(n, dtype=np.int64)
     spell_start[chg] = chg
-    spell_start = np.maximum.accumulate(spell_start)
+    picks = np.flatnonzero(f["touch"] != 0)
+    return {"c": c, "f": f, "base": base, "pdead": pdead, "ball": ball, "L": pitch[0],
+            "W": pitch[1], "cols": cols, "players": d["players"], "team": d["team"], "n": n,
+            "sign_home": attack_sign(d, d["period"]), "features": features,
+            "q": np.clip(c["p_ref"], 1e-4, 1 - 1e-4),
+            "ph1": c["p1"][:, H] / np.maximum(c["p1"][:, H] + c["p1"][:, A], 1e-6),
+            "tp": np.stack([f["touch_p_home"], f["touch_p_away"]], axis=1).astype(np.float64),
+            "picks": picks, "pick_side": np.where(f["touch"][picks] > 0, 0, 1),
+            "half": int(round(PEAK_HALF_S * FPS)), "offs": [int(round(o * FPS)) for o in OFFS_S],
+            "spell_start": np.maximum.accumulate(spell_start)}
 
+
+def touch_feats(ctx, i, side, j):
+    """Inputs of a touch of side (0 home, 1 away) at frame i, oriented to that team; j: the frame
+    'just before' (for how long the base's current spell has lasted)."""
+    c, f, ball, cols, pdead = ctx["c"], ctx["f"], ctx["ball"], ctx["cols"], ctx["pdead"]
+    L, W, n, players, team = ctx["L"], ctx["W"], ctx["n"], ctx["players"], ctx["team"]
+    sign_home, features, q, ph1, tp = (ctx["sign_home"], ctx["features"], ctx["q"], ctx["ph1"],
+                                       ctx["tp"])
+    picks, pick_side, half, offs = ctx["picks"], ctx["pick_side"], ctx["half"], ctx["offs"]
+    spell_start = ctx["spell_start"]
+    x = {}
+    sg = sign_home[i] if side == 0 else -sign_home[i]    # T attacks toward +sg in x
+    x["peak_p"] = tp[i, side]
+    x["o_p_at"] = tp[i, 1 - side]
+    for w_ in (0.5, 1.0):
+        k = int(w_ * FPS)
+        x["o_pmax_prev%g" % w_] = tp[max(i - k, 0):i, 1 - side].max(initial=0)
+        x["o_pmax_next%g" % w_] = tp[i + 1:i + 1 + k, 1 - side].max(initial=0)
+        x["t_pmax_next%g" % w_] = tp[i + half + 1:i + half + 1 + k, side].max(initial=0)
+    # picked touches around
+    prv = np.flatnonzero(picks < i - 2)[-CTX_N:][::-1]
+    nxt = np.flatnonzero(picks > i + 2)[:CTX_N]
+    for r in range(CTX_N):
+        for tag, idx in (("prev", prv), ("next", nxt)):
+            if r < len(idx):
+                x["%s%d_t" % (tag, r)] = float(pick_side[idx[r]] == side)
+                x["%s%d_dt" % (tag, r)] = abs(picks[idx[r]] - i) / FPS
+            else:
+                x["%s%d_t" % (tag, r)] = np.nan
+                x["%s%d_dt" % (tag, r)] = np.nan
+    for tag, s_ in (("t", side), ("o", 1 - side)):
+        after = picks[(picks > i + 2) & (pick_side == s_)]
+        x["next_%s_dt" % tag] = (after[0] - i) / FPS if len(after) else 30.0
+    # evidence around (oriented)
+    for o, k in zip(OFFS_S, offs):
+        t = min(max(i + k, 0), n - 1)
+        pt = ph1[t] if side == 0 else 1 - ph1[t]
+        x["p1_%g" % o] = pt
+        lq = np.log(q[t] / (1 - q[t]))
+        x["ref_%g" % o] = lq if side == 0 else -lq
+        x["vote_%g" % o] = c["vote"][t] if side == 0 else -c["vote"][t]
+        x["hand2D_%g" % o] = float(c["hand"][t] == D)
+        for p_ in PAIRED:
+            a_, b_ = f[p_ + "_home"][t], f[p_ + "_away"][t]
+            x["%s_t_%g" % (p_, o)] = a_ if side == 0 else b_
+            x["%s_o_%g" % (p_, o)] = b_ if side == 0 else a_
+        for s_ in SINGLE:
+            x["%s_%g" % (s_, o)] = f[s_][t]
+        x["ball_z_%g" % o] = c["ball_z"][t]
+        for r_ in REACT:
+            a_, b_ = cols[r_ + "_home"][t], cols[r_ + "_away"][t]
+            x["%s_t_%g" % (r_, o)] = a_ if side == 0 else b_
+            x["%s_o_%g" % (r_, o)] = b_ if side == 0 else a_
+    for k_ in ("r_push", "r_cx", "r_back", "r_compact", "r_spread"):
+        for dd_ in ("d2", "d4", "d6"):
+            a_ = cols["%s_home_%s" % (k_, dd_)][i]
+            b_ = cols["%s_away_%s" % (k_, dd_)][i]
+            x["%s_t_%s" % (k_, dd_)] = a_ if side == 0 else b_
+            x["%s_o_%s" % (k_, dd_)] = b_ if side == 0 else a_
+    # ball geometry
+    def bxy(t):
+        t = min(max(t, 0), n - 1)
+        return ball[t, 0] * L, ball[t, 1] * W
+    b0 = np.array(bxy(i))
+    x["ball_x_att"] = (b0[0] - L / 2) * sg
+    x["ball_y_abs"] = abs(b0[1] - W / 2)
+    v_in = b0 - np.array(bxy(i - 8))
+    for w_ in (0.3, 0.6, 1.0, 2.0):
+        bk = np.array(bxy(i + int(w_ * FPS)))
+        x["travel_%g" % w_] = float(np.hypot(*(bk - b0)))
+        x["adv_%g" % w_] = float((bk[0] - b0[0]) * sg)
+    v_out = np.array(bxy(i + 8)) - b0
+    nv = np.linalg.norm(v_in) * np.linalg.norm(v_out)
+    x["turn_cos"] = float(np.dot(v_in, v_out) / nv) if nv > 1e-6 else np.nan
+    # players near the ball now / where it goes
+    for o, k in (("0", 0), ("0.5", int(0.5 * FPS)), ("1", FPS), ("2", 2 * FPS)):
+        t = min(i + k, n - 1)
+        bt = np.array(bxy(t))
+        dist = np.hypot(players[t, :, 0] * L - bt[0], players[t, :, 1] * W - bt[1])
+        for tag, tid in (("t", features.HOME if side == 0 else features.AWAY),
+                         ("o", features.AWAY if side == 0 else features.HOME)):
+            dt_ = dist[team == tid]
+            dt_ = dt_[~np.isnan(dt_)]
+            x["near_%s_%s" % (tag, o)] = float(np.sum(dt_ < NEAR_M))
+            x["min_%s_%s" % (tag, o)] = float(dt_.min()) if len(dt_) else np.nan
+    x["o_spell_s"] = (i - spell_start[j]) / FPS
+    if V2:
+        x.update(intercept_inputs(i, side, ball, players, team, L, W, picks, pick_side,
+                                  c["ball_z"], features))
+    x["dead_p"] = pdead[i]
+    return x
+
+
+def match_rows(c, f, base, pdead, d, ball, pitch, cols, lab=None):
+    """(x, meta, names) of the candidates of one match. d: players, team, period (keeper sides);
+    ball: blurred, normalised. lab None: no truth (meta label 0)."""
+    n = len(base)
+    if lab is None:
+        lab = np.full(n, X, dtype=np.int8)
+    ctx = match_ctx(c, f, base, pdead, d, ball, pitch, cols)
+    tp = ctx["tp"]
+    starts = true_starts(lab)
+    st_f = np.array([s[0] for s in starts])
+    st_k = np.array([s[1] for s in starts])
+    bef = int(round(BEFORE_S * FPS))
+    lab_k = int(round(LABEL_S * FPS))
     rows, meta = [], []
     names = None
     for side in (0, 1):
         T, O = (H, A) if side == 0 else (A, H)
-        for i in peaks(tp[:, side], CAND_P, half):
+        for i in peaks(tp[:, side], CAND_P, ctx["half"]):
             j = max(i - bef, 0)
             if base[j] != O:
                 continue
-            x = {}
-            sg = sign_home[i] if side == 0 else -sign_home[i]    # T attacks toward +sg in x
-            x["peak_p"] = tp[i, side]
-            x["o_p_at"] = tp[i, 1 - side]
-            for w_ in (0.5, 1.0):
-                k = int(w_ * FPS)
-                x["o_pmax_prev%g" % w_] = tp[max(i - k, 0):i, 1 - side].max(initial=0)
-                x["o_pmax_next%g" % w_] = tp[i + 1:i + 1 + k, 1 - side].max(initial=0)
-                x["t_pmax_next%g" % w_] = tp[i + half + 1:i + half + 1 + k, side].max(initial=0)
-            # picked touches around
-            prv = np.flatnonzero(picks < i - 2)[-CTX_N:][::-1]
-            nxt = np.flatnonzero(picks > i + 2)[:CTX_N]
-            for r in range(CTX_N):
-                for tag, idx in (("prev", prv), ("next", nxt)):
-                    if r < len(idx):
-                        x["%s%d_t" % (tag, r)] = float(pick_side[idx[r]] == side)
-                        x["%s%d_dt" % (tag, r)] = abs(picks[idx[r]] - i) / FPS
-                    else:
-                        x["%s%d_t" % (tag, r)] = np.nan
-                        x["%s%d_dt" % (tag, r)] = np.nan
-            for tag, s_ in (("t", side), ("o", 1 - side)):
-                after = picks[(picks > i + 2) & (pick_side == s_)]
-                x["next_%s_dt" % tag] = (after[0] - i) / FPS if len(after) else 30.0
-            # evidence around (oriented)
-            for o, k in zip(OFFS_S, offs):
-                t = min(max(i + k, 0), n - 1)
-                pt = ph1[t] if side == 0 else 1 - ph1[t]
-                x["p1_%g" % o] = pt
-                lq = np.log(q[t] / (1 - q[t]))
-                x["ref_%g" % o] = lq if side == 0 else -lq
-                x["vote_%g" % o] = c["vote"][t] if side == 0 else -c["vote"][t]
-                x["hand2D_%g" % o] = float(c["hand"][t] == D)
-                for p_ in PAIRED:
-                    a_, b_ = f[p_ + "_home"][t], f[p_ + "_away"][t]
-                    x["%s_t_%g" % (p_, o)] = a_ if side == 0 else b_
-                    x["%s_o_%g" % (p_, o)] = b_ if side == 0 else a_
-                for s_ in SINGLE:
-                    x["%s_%g" % (s_, o)] = f[s_][t]
-                x["ball_z_%g" % o] = c["ball_z"][t]
-                for r_ in REACT:
-                    a_, b_ = cols[r_ + "_home"][t], cols[r_ + "_away"][t]
-                    x["%s_t_%g" % (r_, o)] = a_ if side == 0 else b_
-                    x["%s_o_%g" % (r_, o)] = b_ if side == 0 else a_
-            for k_ in ("r_push", "r_cx", "r_back", "r_compact", "r_spread"):
-                for dd_ in ("d2", "d4", "d6"):
-                    a_ = cols["%s_home_%s" % (k_, dd_)][i]
-                    b_ = cols["%s_away_%s" % (k_, dd_)][i]
-                    x["%s_t_%s" % (k_, dd_)] = a_ if side == 0 else b_
-                    x["%s_o_%s" % (k_, dd_)] = b_ if side == 0 else a_
-            # ball geometry
-            def bxy(t):
-                t = min(max(t, 0), n - 1)
-                return ball[t, 0] * L, ball[t, 1] * W
-            b0 = np.array(bxy(i))
-            x["ball_x_att"] = (b0[0] - L / 2) * sg
-            x["ball_y_abs"] = abs(b0[1] - W / 2)
-            v_in = b0 - np.array(bxy(i - 8))
-            for w_ in (0.3, 0.6, 1.0, 2.0):
-                bk = np.array(bxy(i + int(w_ * FPS)))
-                x["travel_%g" % w_] = float(np.hypot(*(bk - b0)))
-                x["adv_%g" % w_] = float((bk[0] - b0[0]) * sg)
-            v_out = np.array(bxy(i + 8)) - b0
-            nv = np.linalg.norm(v_in) * np.linalg.norm(v_out)
-            x["turn_cos"] = float(np.dot(v_in, v_out) / nv) if nv > 1e-6 else np.nan
-            # players near the ball now / where it goes
-            for o, k in (("0", 0), ("0.5", int(0.5 * FPS)), ("1", FPS), ("2", 2 * FPS)):
-                t = min(i + k, n - 1)
-                bt = np.array(bxy(t))
-                dist = np.hypot(players[t, :, 0] * L - bt[0], players[t, :, 1] * W - bt[1])
-                for tag, tid in (("t", features.HOME if side == 0 else features.AWAY),
-                                 ("o", features.AWAY if side == 0 else features.HOME)):
-                    dt_ = dist[team == tid]
-                    dt_ = dt_[~np.isnan(dt_)]
-                    x["near_%s_%s" % (tag, o)] = float(np.sum(dt_ < NEAR_M))
-                    x["min_%s_%s" % (tag, o)] = float(dt_.min()) if len(dt_) else np.nan
-            x["o_spell_s"] = (i - spell_start[j]) / FPS
-            if V2:
-                x.update(intercept_inputs(i, side, ball, players, team, L, W, picks, pick_side,
-                                          c["ball_z"], features))
-            x["dead_p"] = pdead[i]
+            x = touch_feats(ctx, i, side, j)
             if names is None:
                 names = list(x)
             rows.append([x[k] for k in names])
-            # label
             near = np.abs(st_f - i) <= lab_k
             hit = np.flatnonzero(near & (st_k == T))
             if len(hit):

@@ -2809,6 +2809,46 @@ classifier's proposals written straight over the base without the decoder.
   in hand D, a quarter are the back-and-forth case. Next: pair proposals (other team, then the
   original team back within ~2 s) as new candidates.
 
+### 2026-11-07: pair proposals for short possessions (`tools/pair_cls.py`)
+
+Focus agreed with the user: short possessions (long ones we already get). A pair proposes a whole
+short spell at once: a touch-network peak of team B (P >= 0.2) at t1 while the base (v31_d1) has
+A, and one of A's next 2 peaks (P >= 0.2) at t2, 0.2-3 s later. Target: a true B possession with
+IoU >= 0.5 to [t1, t2) (exactly the catch). Inputs (581): the single-touch inputs (v2) at t1
+oriented to B and at t2 oriented to A, plus the span (length, touch P of both teams inside, B peaks
+inside, first stage / refiner / vote / hand D / P(dead) over it, ball travel and gain toward B's
+attack, base back with A after t2). XGBoost GPU, 4 fixed folds.
+
+- 55,032 pairs, 4.6% positive. **Ceiling: 28% of the true < 2 s spells after a team change have a
+  correct pair** (2-5 s 23%); today 5-7% are caught.
+- Held-out AUC 0.907, AP 0.42. p >= 0.3: precision 0.56, recall 0.29 (< 2 s spells 0.23).
+  Top inputs: ball gain toward B's attack over the span, the first stage 1 s after t1, B peaks
+  inside, span length, the first stage before t2, direction change at t1.
+
+Into the v31_d1 chain (b 8 per frame toward B over [t1, t2), at least 45 in total; with the t1
+single proposals: the stronger of the two per frame):
+
+| setting | SkillCorner | PFF | nested | caught < 2 s / 2-5 s |
+|---|---|---|---|---|
+| base v31_d1 | 0.6057 | 0.5539 | | 5.1% / 26.9% |
+| t1 single proposals (v31_d1_to) | +0.0116 (18/2) | +0.0081 (51/13) | +0.0090 | 7.0% / 30.1% |
+| pairs alone, p0 0.2 | +0.0076 (14/5) | +0.0089 (52/10) | +0.0084-0.0086 | 7.2% / 29.5% |
+| **pairs p0 0.2 + t1** | **+0.0148 (19/1)** | **+0.0116 (59/5)** | **+0.0121-0.0123 (77-78/6-7)** | **7.8% / 31.2%** |
+| pairs p0 0.1 / 0.15 / 0.3 + t1 | +0.0137-0.0140 | +0.0109-0.0117 | | 7.6-8.1% / 31% |
+
+- The pairs add to the single proposals: +0.003 more, and the most consistent result so far
+  (SkillCorner 19 of 20 matches up, PFF 59 of 64). The minimum total of 45 now matters a little
+  (the span is short and fixed by evidence at both ends).
+- Short catch rates still move little (5 -> 8%); part of the gain is better boundaries of spells
+  that were already partly found and their neighbours.
+
+**Our match** (`$env:MTAH_VARIANT="_kt"; python tools/pair_cls.py ours --tag p1 --name
+v31_d1_pt_kt`): 618 pairs, 11 proposals (1.8%; external 3.8%); single proposals 54 of 468 (12%;
+external 20%). Public **0.800 / 0.939** (unchanged), full match 225 -> 233 possessions (t1 alone
+230). **v31_d1_pt_kt.csv** written (valid), passes the rule; candidate, decision open. Our match
+gets about half the external proposal rate from both classifiers (fewer short possessions in a
+La Liga tactical feed, or a domain gap; not checked).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
