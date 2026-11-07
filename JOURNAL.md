@@ -2999,6 +2999,29 @@ e3 and e3 + check (window unchanged), full match 225 -> 248 / 247 possessions. P
 0.04 / 0.08. **v31_d1_e3_h07_kt.csv** and **v31_d1_e3k_kt.csv** written (valid), pass the rule;
 candidates, decision open. The larger net (s2) is still training.
 
+### 2026-11-07: larger short net (s2) and the four-net ensemble (e4)
+
+**s2** (hidden 192, 20 epochs, about 25 min per fold): frame AUC 0.955; hi 0.7 over D **0.6339 /
+0.6240** (81/3), short catches 27.3% / 58.3%. Level with s1 (0.6343 / 0.6278): the larger net
+doesn't help.
+
+**e4 = s1 + s1b + s1nz + s2** (mean of held-out predictions):
+
+| setting | SkillCorner | PFF | up/down | caught < 2 s / 2-5 s | precision |
+|---|---|---|---|---|---|
+| e3 + check (before) | 0.6421 | 0.6370 | 84/0 | 22.4% / 56.8% | 65.3% |
+| e4 hi 0.7 over D | 0.6413 | 0.6358 | 82/2 | 26.3% / 57.9% | 64.6% |
+| e4 + check (gen 0.6, keep >= 0.3, edges) | 0.6409 (18/2) | 0.6378 (64/0) | 82/2 | 22.7% / 57.0% | 65.3% |
+
+frame AUC 0.963; check AUC 0.753. Nested 4-fold, e4 + check: SkillCorner +0.0315, PFF +0.0860
+(81/3), so the same as e3 within noise. Adding nets has stopped paying: seeds, size and
+the no-height input all give the same catches, so the limit is in the inputs or targets, not the model.
+
+**Our match** (`--ens "s1,s1b,s1nz:bz,s2" --ens-tag e4`): public **0.800 / 0.939** unchanged, 249
+(plain hi 0.7) / 252 (check) possessions. #10 / #12 peaks 0.04 / 0.06 (0.21 within 1 s).
+`v31_d1_e4_h07_kt.csv` and `v31_d1_e4k_kt.csv` written. The best candidate stays **v31_d1_e3k_kt.csv**
+(84/0 nested, the simpler of the two).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
