@@ -2781,6 +2781,34 @@ stops and who is nearest. **Short-weighted training**: positives < 2 s weight w,
 - Further gains need new evidence for the short starts (the back-and-forth case where the base
   already has T is a quarter of them and isn't even a candidate), or a different target.
 
+### 2026-11-07: without the decoder, how many short possessions are there? (`tools/decoder_sweep.py`)
+
+User's question: the decoder merges possessions (it predicts 0.81 per true one); without it, do we
+get the short ones, and is there a middle ground? v31_d1 chain on the 84 external matches with the
+team switch cost lowered to 0 (per-frame argmax of first stage + refiner + vote), and the turnover
+classifier's proposals written straight over the base without the decoder.
+
+| setting | SkillCorner | PFF | caught < 2 s | 2-5 s | pred / true poss | precision |
+|---|---|---|---|---|---|---|
+| switch 20 (base) | 0.6057 | 0.5539 | 5.1% | 26.9% | 0.81 | 64.1% |
+| switch 10 | 0.6035 | 0.5468 | 5.8% | 27.7% | 0.85 | 61.7% |
+| switch 5 | 0.5990 | 0.5391 | 6.5% | 28.3% | 0.89 | 59.5% |
+| switch 2 | 0.5915 | 0.5276 | 7.2% | 28.8% | 0.94 | 56.8% |
+| switch 1 | 0.5856 | 0.5165 | 7.4% | 29.2% | 0.98 | 54.5% |
+| switch 0 (no smoothing) | 0.5149 | 0.4326 | 7.5% | 29.2% | 1.35 | 39.6% |
+| proposals pasted, p >= 0.2 | 0.6105 | 0.5553 | 10.0% | 32.5% | 0.93 | 59.8% |
+| proposals pasted, p >= 0.5 | 0.6147 | 0.5606 | 7.4% | 29.5% | 0.85 | 63.5% |
+| proposals through the decoder (t1, chosen) | 0.6173 | 0.5620 | 7.0% | 30.1% | | |
+
+- **The evidence doesn't hold the short possessions**: with no smoothing at all, < 2 s catches rise
+  only 5.1 -> 7.5% while predicted possessions overshoot by 35%. The decoder's merging removes
+  mostly wrong spells; every lower switch cost loses score, so there is no middle ground there.
+- Pasting the classifier's proposals catches the most (10% < 2 s) but scores below the decoder
+  version: the decoder filters the proposals usefully.
+- The ceiling is the candidates and evidence: only a third of short starts are candidates, 19% sit
+  in hand D, a quarter are the back-and-forth case. Next: pair proposals (other team, then the
+  original team back within ~2 s) as new candidates.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
