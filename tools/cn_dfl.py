@@ -27,7 +27,7 @@ import change_net as C  # noqa: E402
 import short_net as S  # noqa: E402
 import dfl_data as dd  # noqa: E402
 
-DROPS = {"c1": "", "c1nz": "bz,hold", "c1ch": "drop_ch.txt", "c1raw": "drop_raw.txt", "c1dl": "", "c1chdl": "drop_ch.txt"}
+DROPS = {"c1": "", "c1nz": "bz,hold", "c1ch": "drop_ch.txt", "c1raw": "drop_raw.txt", "c1dl": "", "c1chdl": "drop_ch.txt", "c1dl10": ""}
 
 
 def path(g):

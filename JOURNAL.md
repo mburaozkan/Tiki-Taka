@@ -3261,6 +3261,20 @@ the edge of plausible): waiting on the user's decision whether to submit it.
 
 ## Next steps
 
+**Next session (agreed 2026-11-08): more evidence for turnovers.** Best change net: c1dl (SC + PFF +
+DFL x5): DFL 0.6514 held out (7/0), SC / PFF +0.056 / +0.096 nested, public 0.637-0.686. Turnovers are
+its weak point (about half found within 1 s on DFL).
+1. Rerun c1dl10 (DFL x10, stopped for time); if it helps, a seed ensemble.
+2. Turnover signals, each measured first as AUC on held-out SC / PFF / DFL (true turnover frames vs
+   other live frames), then as change-net inputs:
+   a. team reaction: mean running direction flips, new attackers spread / old ones compact,
+      defenders close on the ball (players only, works in ball gaps);
+   b. air-ball signal from the 2D ball path: flight over players without slowdown, bounce, landing
+      receiver (in place of the flat ball height);
+   c. ball after a contact: next movement toward the new owner's teammates (pass / carry) vs a deflection;
+   d. our own ball detection from the video (larger job).
+3. Judged on DFL + SC + PFF full matches; public only to catch breaks.
+
 **Next session (agreed 2026-11-07): turnover classifier for the short possessions.** Base:
 v31_d1_kt (working base; the submitted file is v31_kt). Candidate on top: v32_s1_kt (first stage
 retrained, +0.008 / +0.024 on held-out SkillCorner / PFF, public 0.787).
