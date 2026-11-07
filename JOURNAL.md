@@ -3022,6 +3022,43 @@ the no-height input all give the same catches, so the limit is in the inputs or 
 `v31_d1_e4_h07_kt.csv` and `v31_d1_e4k_kt.csv` written. The best candidate stays **v31_d1_e3k_kt.csv**
 (84/0 nested, the simpler of the two).
 
+### 2026-11-07: where the best candidate still loses (`tools/miss_profile.py`)
+
+Base: v31_d1 + e3 short net + check (gen 0.6, keep >= 0.3, edges, over D), on the 84 external
+matches (SkillCorner 0.6421, PFF 0.6370). 23,417 true possessions, 23,316 predicted.
+
+| true length | share | caught (mean IoU 0.3-0.7) | share of misses | oracle gain SC / PFF |
+|---|---|---|---|---|
+| < 2 s | 14% | 23% | 30% | +0.079 / +0.059 |
+| 2-5 s | 24% | 55% | 30% | +0.068 / +0.070 |
+| 5-10 s | 22% | 64% | 21% | +0.073 / +0.069 |
+| 10-20 s | 19% | 78% | 11% | +0.048 / +0.050 |
+| >= 20 s | 20% | 86% | 8% | +0.040 / +0.064 |
+
+- **It isn't only the short ones.** 5-10 s possessions are worth as much as each short class, and
+  misses (8,572) and false spells (8,471) are equally many, so precision is as large a problem as recall.
+- Why short ones (< 2 s) are missed: mostly D 27%, mostly the other team 26%, merged into a
+  longer spell of their own team 23%. Half of the short possessions sit between two possessions of
+  the other team (caught 47%); between the other team and D they are caught least (34%).
+- **The signal is often there for the missed short ones:** net P peak >= 0.3 for 72% of them,
+  team touch-net peak >= 0.3 for 69%, ball seen for 87%. The chain doesn't turn it into a spell.
+- **Changes of state (the challenge's core question: when does possession change hands)**, recall
+  of a predicted change of the same type within 0.2 / 0.5 / 1 / 2 s (precision is the same within
+  a few points):
+
+| change | SkillCorner | PFF | median abs offset (hits <= 2 s) |
+|---|---|---|---|
+| turnover (team -> other team) | 34 / 41 / 52 / 68% | 29 / 38 / 48 / 64% | 0.24-0.28 s |
+| stoppage (team -> D) | 23 / 31 / 44 / 60% | 18 / 32 / 48 / 68% | 0.44-0.56 s |
+| restart (D -> team) | 14 / 22 / 30 / 46% | 17 / 29 / 45 / 64% | 0.56-0.60 s |
+
+  Half the true changes have no matching change within 1 s, and a third have none within 2 s.
+  (The external sets mark D wider than the organisers, so the D numbers are only partly comparable.)
+- **New goal, in the challenge's terms:** detect every change of possession, of its type, at the right
+  time. Next: a dense change network on all possessions (the short net's inputs, targets = every
+  change by type plus the frame class), judged first on this change recall / precision, then decoded
+  into possessions and scored on spellF1.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
