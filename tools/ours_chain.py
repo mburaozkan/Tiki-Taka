@@ -40,10 +40,12 @@ class Args:
     protect, hold = True, 0.0
 
 
-def ours_v31(touch_path=None, dead_prefix=None):
+def ours_v31(touch_path=None, dead_prefix=None, learned_models=None, refine_prefix=None):
     """(codes, extras) of v31 on our match with the given touch network (default: deployed).
     dead_prefix: dead-ball head models <prefix>_s*.pt (no P(dead) input, e.g. models/dead_ext_d1,
-    tools/train_ext_heads.py) in place of dead_d1n."""
+    tools/train_ext_heads.py) in place of dead_d1n. learned_models: {"gbm", "gru"} in place of
+    gbm_dfl / gru_dfl (tools/ext_stage1.py). refine_prefix: team refiner models <prefix>_s*.pt in
+    place of refine_v29."""
     import lightgbm as lgb
     from games import GAME, half_video_blocks
     from atd_cache import load_arrays
@@ -53,7 +55,7 @@ def ours_v31(touch_path=None, dead_prefix=None):
     from pipeline import run_learned as rl
     tm = touch_net.load(touch_path or os.path.join(ROOT, touch_net.MODEL_PATH))
     f = build_features(events=[], touch_model=tm)
-    trained = rl.models("dfl", ("gbm", "gru"))
+    trained = learned_models or rl.models("dfl", ("gbm", "gru"))
     prob = 0.5 * learned.predict_proba(trained["gbm"], f) + 0.5 * predict_gru(trained["gru"], f)
     hand = decode(build_features(touch_model=tm))
     blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]
@@ -67,8 +69,14 @@ def ours_v31(touch_path=None, dead_prefix=None):
     prob = idt.combine(prob, idt.predict_po(model, cols), weak, 0.5)
     n = len(hand)
     p1 = stage1(prob, f)
-    bundles = [refine.load(os.path.join(ROOT, "models", "refine_v29_s{}.pt".format(s)))
-               for s in range(5)]
+    if refine_prefix:
+        import glob
+        bundles = [refine.load(p) for p in sorted(glob.glob(os.path.join(ROOT, refine_prefix + "_s*.pt")))]
+        if not bundles:
+            raise SystemExit("no models " + refine_prefix + "_s*.pt")
+    else:
+        bundles = [refine.load(os.path.join(ROOT, "models", "refine_v29_s{}.pt".format(s)))
+                   for s in range(5)]
     refine.BIN = bundles[0][0].cfg["BIN"]
     xs = (refine.inputs(p1, hand, f, cols), refine.inputs(p1, hand, f, cols, True))
     p_ref = np.mean([refine.predict(b, xs[0], xs[1], n) for b in bundles], axis=0)

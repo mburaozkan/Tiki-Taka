@@ -2607,6 +2607,30 @@ drops by no more than ~0.04; DFL (leave one out) is reported, not a veto (its la
 ours: the controlled filter, the animated dead ball). Team-side and dead-side effects reported
 separately, since the broadcast sets' D edges are defined more widely than the organisers'.
 
+### 2026-11-07: step 2, first stage (GBM + GRU) retrained on DFL + SkillCorner + PFF (`tools/ext_stage1.py`)
+
+Same features (`learned.matrix`) and models as gbm_dfl / gru_dfl, trained on DFL (21 gap versions)
++ the external matches; 4 fixed folds (each external match scored by a model that never saw it)
++ one model on everything for our match. Eval re-runs the whole chain from the first stage on
+(players-only vote with the match's own pseudo-labels, stage 1, refine_v29, run vote, dead head d1,
+protected gate, backdating) against the base (v31_d1, same chain). The GRU now trains from float16
+inputs on disk (the first run was stopped for low memory). `tools/ext_stage1.py cols` caches the
+players-only columns.
+
+| first stage | SkillCorner | PFF | short caught (SC / PFF) | P(true team) in short spells | all live | public spF1 / mF1 | full poss |
+|---|---|---|---|---|---|---|---|
+| base (v31_d1) | 0.6057 | 0.5539 | 23 / 83 | 0.502 / 0.474 | 0.884 / 0.868 | 0.800 / 0.939 | 225 |
+| new GBM + old GRU (s1o) | +0.0034 (15/5) | +0.0083 (57/7) | 22 / 78 | 0.494 / 0.473 | 0.886 / 0.874 | | |
+| **new GBM + new GRU (s1)** | **+0.0081 (18/2)** | **+0.0236 (62/2)** | 23 / 75 | 0.496 / 0.471 | 0.891 / 0.886 | 0.787 / 0.939 | 203 |
+
+- A clear gain on the broadcast sets (80 of 84 matches up): the team is right more often everywhere.
+- **The small touches don't move:** inside true short spells (< 2 s) the first stage gives the true
+  team 0.47-0.50, a coin flip, before and after. More training data doesn't create evidence the
+  features don't carry; the touch network is the blocker (next: the touch branch).
+- Public: #5 IoU 0.72 -> 0.63 (one threshold), #15 0.73 -> 0.79; -0.013, inside the rule. Full match
+  203 possessions (225): it merges more; the final decoder re-tune can work against that.
+- **v32_s1_kt.csv** written (valid): passes the rule, candidate. DFL leave one out still to run.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
