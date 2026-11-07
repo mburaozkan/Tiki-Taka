@@ -2631,6 +2631,26 @@ players-only columns.
   203 possessions (225): it merges more; the final decoder re-tune can work against that.
 - **v32_s1_kt.csv** written (valid): passes the rule, candidate. DFL leave one out still to run.
 
+### 2026-11-07: how much do short possessions cost? (oracle, SkillCorner / PFF)
+
+v31 on the cached external matches with the true short possessions pasted in (best case of a
+perfect short-possession detector, neighbours recovering included):
+
+| pasted in | SkillCorner | PFF |
+|---|---|---|
+| v31 as is | 0.599 | 0.537 |
+| short (< 2 s) spells between two of the other team (#10 / #12 kind) | 0.634 (+0.035) | 0.604 (+0.067) |
+| all possessions < 2 s | 0.701 (+0.102) | 0.634 (+0.097) |
+| all < 3 s | 0.747 (+0.148) | 0.688 (+0.151) |
+| all < 5 s | **0.803 (+0.204)** | **0.760 (+0.223)** |
+| share of possessions < 2 / < 3 / < 5 s | 15% / 23% / 36% | 14% / 23% / 39% |
+
+- With every possession under 5 s right, the broadcast sets would score at our public window's
+  level: **nearly all of the gap between public and the external matches is short possessions**
+  (a missed one also merges its neighbours). The public window has few of them.
+- The goal widens from < 2 s to < 5 s: 2-5 s possessions are about a fifth of all and worth as much
+  again, with more time for evidence to show. Evals now report both classes.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

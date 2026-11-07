@@ -5,7 +5,7 @@
     python tools/ext_stage1.py ours --tag s1 [--refine TAG] [--write NAME]
     python tools/ext_stage1.py cols [--jobs 3]       # cache the players-only columns first
     python tools/ext_stage1.py oldgru --source s1 --tag s1o   # new GBM + the deployed DFL GRU
-    python tools/ext_stage1.py train --tag tx5s1 --src tx5 --no-dfl   # on features rebuilt with the
+    python tools/ext_stage1.py train --tag tx5s1 --src tx5 --no-dfl --gbm xgb   # on features rebuilt with the
         # held-out external touch networks (run_v31_external.py --touch-dir ... --tag tx5 --save)
     python tools/ext_stage1.py ours --tag tx5s1 --touch data/cache/models/touch_ext/touch_all.pt --pick 0.5
 GRU training reads float16 inputs from disk (data/cache/dfl/gru_prep_*, ext_v31/gru_*), so it
@@ -103,6 +103,42 @@ def train_gbm_w(rows, rounds=400, seed=0):
     ys = np.concatenate([r[1] for r in rows])
     ws = np.concatenate([r[2] for r in rows])
     return lgb.train(params, lgb.Dataset(xs, ys, weight=ws), num_boost_round=rounds)
+
+
+class XGB:
+    """XGBoost booster with LightGBM's predict(matrix) -> (n, 3) interface (learned.predict_proba)."""
+
+    def __init__(self, booster):
+        self.booster = booster
+
+    def predict(self, x):
+        return self.booster.inplace_predict(np.asarray(x, dtype=np.float32))
+
+    def save_model(self, path):
+        self.booster.save_model(path)
+
+
+def load_xgb(path):
+    import xgboost as xgb
+    b = xgb.Booster()
+    b.load_model(path)
+    b.set_param({"device": "cuda"})
+    return XGB(b)
+
+
+def train_xgb_w(rows, rounds=400, seed=0):
+    """GPU XGBoost with the LightGBM settings translated (63 leaves, lr 0.05, 0.8 / 0.8, l2 1)."""
+    import xgboost as xgb
+    xs = np.concatenate([r[0] for r in rows])
+    ys = np.concatenate([r[1] for r in rows])
+    ws = np.concatenate([r[2] for r in rows])
+    dm = xgb.QuantileDMatrix(xs, ys, weight=ws)
+    del xs
+    params = {"objective": "multi:softprob", "num_class": 3, "eta": 0.05, "device": "cuda",
+              "tree_method": "hist", "grow_policy": "lossguide", "max_leaves": 63, "max_depth": 0,
+              "min_child_weight": 10, "subsample": 0.8, "colsample_bytree": 0.8, "lambda": 1.0,
+              "seed": seed}
+    return XGB(xgb.train(params, dm, num_boost_round=rounds))
 
 
 def _prep_save(path, f, lab):
@@ -243,7 +279,8 @@ def train_cmd(args):
             ext_rows[(n, g)] = gbm_rows(f, c["labels"], EXT_STEP, args.short_weight)
         print("GBM rows built in {:.0f} s".format(time.time() - t0), flush=True)
         for mode, k in jobs:
-            path = os.path.join(MODELS, "{}_gbm.txt".format(args.tag))
+            path = os.path.join(MODELS, "{}_gbm.{}".format(args.tag,
+                                                          "json" if args.gbm == "xgb" else "txt"))
             held = [(n, g) for n, g, fo in ext if mode == "fold" and fo == k]
             if mode == "fold" and all("{}_{}__gbm".format(n, g) in probs for n, g in held):
                 continue
@@ -251,7 +288,7 @@ def train_cmd(args):
                 continue
             t0 = time.time()
             rows = dfl_rows + [ext_rows[(n, g)] for n, g, fo in ext if mode == "all" or fo != k]
-            model = train_gbm_w(rows)
+            model = train_xgb_w(rows) if args.gbm == "xgb" else train_gbm_w(rows)
             if mode == "all":
                 model.save_model(path)
             for n, g in held:
@@ -448,7 +485,9 @@ def ours_cmd(args):
     import ours_chain as oc
     from pipeline.sequence import _net
     from report import brief_line, PUBLIC_GT
-    gbm = lgb.Booster(model_file=os.path.join(MODELS, "{}_gbm.txt".format(args.tag)))
+    xgb_path = os.path.join(MODELS, "{}_gbm.json".format(args.tag))
+    gbm = load_xgb(xgb_path) if os.path.isfile(xgb_path) else \
+        lgb.Booster(model_file=os.path.join(MODELS, "{}_gbm.txt".format(args.tag)))
     saved = torch.load(os.path.join(MODELS, "{}_gru.pt".format(args.tag)), weights_only=False,
                        map_location=None if torch.cuda.is_available() else "cpu")
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -492,6 +531,8 @@ def main():
     t.add_argument("--kinds", nargs="+", default=["gbm", "gru"], choices=("gbm", "gru"))
     t.add_argument("--modes", nargs="+", default=["folds", "all"], choices=("folds", "all"))
     t.add_argument("--no-dfl", action="store_true", help="external matches only")
+    t.add_argument("--gbm", choices=("lgb", "xgb"), default="lgb",
+                   help="xgb: XGBoost on the GPU (same settings; ~10x faster here)")
     e = sub.add_parser("eval")
     e.add_argument("--tag", required=True)
     e.add_argument("--jobs", type=int, default=4)
