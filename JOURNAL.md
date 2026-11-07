@@ -2651,6 +2651,38 @@ perfect short-possession detector, neighbours recovering included):
 - The goal widens from < 2 s to < 5 s: 2-5 s possessions are about a fifth of all and worth as much
   again, with more time for evidence to show. Evals now report both classes.
 
+### 2026-11-07: touch networks at possession starts, old vs the Nov 5 external one
+
+Before rebuilding the stack on the Nov 5 touch networks (`train_touch_ext.py`, DFL + 3 external
+folds each; every external match re-run with its held-out network, pick 0.5, tag tx5), a check of
+what matters now: at each true possession start, a picked touch of the new team within +/- 0.5 s?
+45 rebuilt matches so far, same matches for both networks.
+
+| starts after a team change | SkillCorner old -> new | PFF old -> new |
+|---|---|---|
+| short (< 2 s), picked touch of the new team | 63% -> 53% | 47% -> 40% |
+| 2-5 s | 64% -> 63% | 59% -> 55% |
+| >= 5 s | 61% -> 60% | 64% -> 58% |
+| short, peak P >= 0.5 | 70% -> 46% | 57% -> 24% |
+| picked touches per graded minute | 31.5 -> 21.6 | 28.5 -> 17.4 |
+
+After a stoppage it is worse still (SkillCorner short 25% -> 7%; PFF about level).
+- The external network is less confident and picks a third fewer touches, so it finds fewer starts,
+  short ones included: its targets (every event touch, both sides of duels, releases) made it
+  cautious. The tx5 branch is not expected to help the small touches.
+- **The current network already has a touch of the right team at about half of the short starts**
+  (47-63%), yet the first stage gives the true team ~0.5 inside short spells and v31 catches ~10% of
+  them. The evidence is often there; what's missing is telling which of the other team's touches
+  start a possession (about 30 touches a minute, most of them inside one possession).
+- Next idea: a turnover classifier per picked touch of the team not in possession (context: where
+  the ball goes and who touches it next, distances, speeds, reaction), trained on the 84 external
+  matches (labels count short possessions), held-out folds; its output lowers the switch cost at
+  those touches. The DFL-only turnover network gave +0.0018 (Oct 29).
+
+Also running / done today: `ext_stage1.py` has an XGBoost GPU backend (`--gbm xgb`, xgboost 3.0.2
+installed in the venv with uv; LightGBM here has no GPU build), and evals report possessions caught
+by length (< 2 s, 2-5 s).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

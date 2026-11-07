@@ -391,6 +391,20 @@ def p_true(p1, lab, mask):
     return float(pt.mean()), int(m.sum())
 
 
+def length_caught(lab, codes, classes=((0, 2), (2, 5))):
+    """Per length class (s): (true possessions, caught = a predicted spell of that team with
+    IoU >= 0.5)."""
+    import run_v31_external as rx
+    runs = pm.valid_runs(lab)
+    truth = pm.possession_spells(lab, runs)
+    pred = pm.possession_spells(pm.fill_abstentions(codes, runs), runs)
+    out = []
+    for lo, hi in classes:
+        sel = [t for t in truth if lo <= (t[1] - t[0]) / 25.0 < hi]
+        out.append((len(sel), sum(rx.caught(t, pred) for t in sel)))
+    return out
+
+
 _W = {}
 
 
@@ -437,9 +451,11 @@ def eval_match(job):
     sm = short_mask(lab, 2.0)
     n_sh, b_sh = th.short_caught(lab, base)
     _, c_sh = th.short_caught(lab, codes)
+    lc = (length_caught(lab, base), length_caught(lab, codes))
     return (name, tr.score(lab, base), tr.score(lab, codes), n_sh, b_sh, c_sh,
             p_true(base_p1, lab, sm), p_true(p1, lab, sm),
-            p_true(base_p1, lab, np.ones(len(lab), bool)), p_true(p1, lab, np.ones(len(lab), bool)))
+            p_true(base_p1, lab, np.ones(len(lab), bool)), p_true(p1, lab, np.ones(len(lab), bool)),
+            lc)
 
 
 def _cols_job(j):
@@ -477,6 +493,13 @@ def eval_cmd(args):
                   name, len(r), b.mean(), s.mean(), d.mean(), int(np.sum(d > 1e-9)),
                   int(np.sum(d < -1e-9)), sh[1], sh[2], sh[0], wmean(6, None), wmean(7, None),
                   wmean(8, None), wmean(9, None)), flush=True)
+        lc = np.sum([[[c[0], c[1]] for c in x[10][0]] + [[c[0], c[1]] for c in x[10][1]]
+                     for x in r], axis=0)            # rows: base <2, base 2-5, new <2, new 2-5
+        print("{:<12} caught (IoU >= 0.5): < 2 s {} -> {} of {} ({:.0%} -> {:.0%}) | 2-5 s {} -> {} of {} "
+              "({:.0%} -> {:.0%})".format(name, lc[0][1], lc[2][1], lc[0][0], lc[0][1] / max(lc[0][0], 1),
+                                         lc[2][1] / max(lc[0][0], 1), lc[1][1], lc[3][1], lc[1][0],
+                                         lc[1][1] / max(lc[1][0], 1), lc[3][1] / max(lc[1][0], 1)),
+              flush=True)
 
 
 def ours_cmd(args):
