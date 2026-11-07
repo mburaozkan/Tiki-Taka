@@ -2971,6 +2971,34 @@ Nested 4-fold (gen 0.6): SkillCorner +0.0326, PFF +0.0772 (82/2); gen 0.7: +0.03
   net (recall and sharper P). Running: a second seed (s1b), a larger net (hidden 192, 20 epochs,
   s2), and the net without ball height (s1nz).
 
+### 2026-11-07: short net without ball height, and the ensemble (`short_net.py --drop bz`, `avg`)
+
+**Without ball height (s1nz)**: on the 84 matches nearly the same (hi 0.7 over D: 0.6333 / 0.6250
+vs 0.6343 / 0.6278; frame AUC 0.957). On our match it is more active (P(inside) >= 0.5 on 3.9% of
+frames vs 2.8%; external true 4.5%): peak at #12 0.23 inside / 0.78 within 1 s (off in time),
+#10 still 0.02. Public **0.718 / 0.914** (hi 0.7) and 0.700 / 0.923 (hi 0.8): #13 0.09 -> 0.63 and
+#9 0.47 -> 0.59, but #1 split by a false short spell (0.96 -> 0.31), #11 split, #2 0.96 -> 0.73,
+2 spurious spells; 276 possessions. Beyond the rule (-0.08).
+
+**Ensemble** (mean of the held-out predictions), hi 0.7 also over D:
+
+| net | frame AUC | SkillCorner | PFF | up/down | caught < 2 s / 2-5 s | precision |
+|---|---|---|---|---|---|---|
+| s1 | 0.959 | 0.6343 | 0.6278 | 82/2 | 26.7% / 58.7% | 62.7% |
+| s1b (second seed) | 0.959 | 0.6293 | 0.6297 | 80/4 | 26.7% / 59.4% | 62.4% |
+| e2 = s1 + s1b | 0.962 | 0.6394 | 0.6345 | 82/2 | 26.5% / 59.1% | 63.9% |
+| e3 = s1 + s1b + s1nz | 0.962 | 0.6403 | 0.6340 | 83/1 | 26.0% / 58.4% | 64.2% |
+| **e3 + check (gen 0.6, keep >= 0.3, edges)** | | **0.6421 (20/0)** | **0.6370 (64/0)** | **84/0** | 22.4% / 56.8% | 65.3% |
+
+Nested 4-fold, e3 + check: SkillCorner **+0.0364**, PFF **+0.0831** (84/0). The ensemble adds
+~+0.006 per set through precision; catch rates don't move.
+
+**Our match** (`$env:MTAH_VARIANT="_kt"; python tools/short_net.py ours --ens "s1,s1b,s1nz:bz"
+[--ens-tag e3 --check k1:0.6:0.3] --over-d --hi 0.7 --name ...`): public **0.800 / 0.939** for both
+e3 and e3 + check (window unchanged), full match 225 -> 248 / 247 possessions. Peaks at #10 / #12:
+0.04 / 0.08. **v31_d1_e3_h07_kt.csv** and **v31_d1_e3k_kt.csv** written (valid), pass the rule;
+candidates, decision open. The larger net (s2) is still training.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

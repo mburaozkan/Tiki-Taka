@@ -442,17 +442,20 @@ def ours_cmd(args):
     atd = load_arrays()
     d = {"players": atd["players"], "team": atd["team"], "period": period}
     sign = T.attack_sign(d, period)
-    x = drop_channels(frame_inputs(c, f, d, dd.blur_ball(atd["ball"]), (LENGTH, WIDTH),
-                                   ex["pdead"], sign))
-    ck = torch.load(os.path.join(MODELS, "{}_all.pt".format(args.tag)), weights_only=False)
-    model = make_model(ck["n_in"], ck.get("hid", 128)).cuda()
-    model.load_state_dict(ck["state"])
-    pr = predict(model, ck["mu"], ck["sd"], x)
-    z = (x.astype(np.float32) - ck["mu"]) / ck["sd"]
-    shift = [(abs(float(np.mean(z[:, j]))), float(np.mean(z[:, j])), float(np.std(z[:, j])), nm)
-             for j, nm in enumerate(channel_names())]
-    print("input shift vs the external training data (mean / std in training-sd units), largest: " +
-          ", ".join("{} {:+.2f}/{:.2f}".format(nm, m, sdv) for _, m, sdv, nm in sorted(shift)[::-1][:12]))
+    xraw = frame_inputs(c, f, d, dd.blur_ball(atd["ball"]), (LENGTH, WIDTH), ex["pdead"], sign)
+    members = args.ens.split(",") if args.ens else [args.tag + (":" + ",".join(DROP) if DROP else "")]
+    prs = []
+    for mem in members:
+        tag, _, drop = mem.partition(":")
+        x = np.array(xraw, copy=True)
+        if drop:
+            x[:, [channel_names().index(ch) for ch in drop.split("+")]] = 0
+        ck = torch.load(os.path.join(MODELS, "{}_all.pt".format(tag)), weights_only=False)
+        model = make_model(ck["n_in"], ck.get("hid", 128)).cuda()
+        model.load_state_dict(ck["state"])
+        prs.append(predict(model, ck["mu"], ck["sd"], x))
+    pr = np.mean(prs, axis=0)
+    print("models: {}".format(members))
     print("frames with P(inside short) >= 0.5: {:.1%} (external mean of true short frames 4.5%)".format(
         float(np.mean(pr[:, :2].max(axis=1) >= 0.5))))
     from report import PUBLIC_GT
@@ -463,6 +466,42 @@ def ours_cmd(args):
           ", ".join("#{} ({:.1f} s) {:.2f} / {:.2f}".format(
               i, (b - a) / FPS, float(pr[a:b, 0 if k == H else 1].max()),
               float(pr[max(a - FPS, 0):b + FPS, 0 if k == H else 1].max())) for i, a, b, k in shorts))
+    if args.check:
+        import xgboost as xgb
+        import in_domain_team as idt
+        import short_check as K
+        T.V2 = True
+        ktag, gen, thr = args.check.split(":")
+        gen, thr = float(gen), float(thr)
+        cols = idt.player_columns(atd["players"], atd["team"], period, (LENGTH, WIDTH))
+        ctx = T.match_ctx(c, f, base, ex["pdead"], d, dd.blur_ball(atd["ball"]), (LENGTH, WIDTH), cols)
+        spells = K.gen_spells(pr, gen)
+        rows, names = [], None
+        for a, b, s_ in spells:
+            xx = K.spell_inputs(ctx, pr, a, b, s_)
+            names = names or list(xx)
+            rows.append([xx[k] for k in names])
+        bst = xgb.Booster()
+        bst.load_model(os.path.join(K.OUT, "models", "{}_{}_g{:g}_all.json".format(
+            ktag, args.ens_tag, gen)))
+        pk = bst.predict(xgb.DMatrix(np.array(rows, np.float32))) if rows else np.zeros(0)
+        new = base.copy()
+        ok = (H, A, D) if args.over_d else (H, A)
+        for i in np.argsort(pk):
+            if pk[i] < thr:
+                continue
+            a, b, s_ = spells[i]
+            a, b = K.refine_edges(pr, a, b, s_, n)
+            seg = new[a:b]
+            new[a:b] = np.where(np.isin(seg, ok), H if s_ == 0 else A, seg)
+        sp = pm.possession_spells(new, pm.valid_runs(new))
+        print("check {} (gen {:g}, keep >= {:g}): {} spells, {} kept; {} possessions (base {}), "
+              "frames changed {:.2f}%".format(ktag, gen, thr, len(spells), int(np.sum(pk >= thr)),
+                                             len(sp), len(pm.possession_spells(base, pm.valid_runs(base))),
+                                             100 * np.mean(new != base)))
+        if args.name:
+            print(oc.write_and_score(new, args.name))
+        return
     for hi in args.hi:
         new = paste_spells(base, pr, hi, hi - 0.15, over_d=args.over_d)
         sp = pm.possession_spells(new, pm.valid_runs(new))
@@ -492,6 +531,9 @@ def main():
     ap.add_argument("--over-d", action="store_true")
     ap.add_argument("--drop", default="", help="channels to zero, e.g. bz")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--ens", default="", help="ensemble for ours, e.g. s1,s1b,s1nz:bz")
+    ap.add_argument("--ens-tag", default="e3", help="the held-out ensemble tag the check was trained on")
+    ap.add_argument("--check", default="", help="ours: keep/drop check TAG:GEN:THR, e.g. k1:0.6:0.3")
     ap.add_argument("--hid", type=int, default=128)
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--tag", default="s1")
