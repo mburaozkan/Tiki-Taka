@@ -141,21 +141,30 @@ def build_match(job):
     import run_v31_external as rx
     import train_ext_heads as th
     from ext_stage1 import cols_for
-    from pipeline import features
     c, f = load_cache(name, g)
     with np.load(os.path.join(ROOT, "data", "cache", "ext_heads_{}.npz".format(DEAD_TAG))) as z:
         pdead = th.seeds_mean({k: z[k] for k in z.files if k.startswith(name + "_" + g + "__")},
                               name + "_" + g)
     blk = rx.blocks(c["period"])
     base = base_chain(c, f, blk, pdead)
-    lab = c["labels"]
-    n = len(lab)
     d, pitch, ball = rx.load_set(name, g)
-    ball = dd.blur_ball(ball)
+    x, meta, names = match_rows(c, f, base, pdead, d, dd.blur_ball(ball), pitch, cols_for(name, g),
+                                c["labels"])
+    os.makedirs(OUT, exist_ok=True)
+    np.savez(path, x=x, meta=meta, names=np.array(names), fold=fold)
+    return path
+
+
+def match_rows(c, f, base, pdead, d, ball, pitch, cols, lab=None):
+    """(x, meta, names) of the candidates of one match. d: players, team, period (keeper sides);
+    ball: blurred, normalised. lab None: no truth (meta label 0)."""
+    from pipeline import features
+    n = len(base)
+    if lab is None:
+        lab = np.full(n, X, dtype=np.int8)
     L, W = pitch
     players, team = d["players"], d["team"]
-    cols = cols_for(name, g)
-    sign_home = attack_sign(d, c["period"])
+    sign_home = attack_sign(d, d["period"])
     q = np.clip(c["p_ref"], 1e-4, 1 - 1e-4)
     ph1 = c["p1"][:, H] / np.maximum(c["p1"][:, H] + c["p1"][:, A], 1e-6)
     tp = np.stack([f["touch_p_home"], f["touch_p_away"]], axis=1).astype(np.float64)
@@ -270,11 +279,8 @@ def build_match(job):
                 meta.append((i, T, 1, s[2], float(s[3])))
             else:
                 meta.append((i, T, 0, np.nan, np.nan))
-    os.makedirs(OUT, exist_ok=True)
-    np.savez(path, x=np.array(rows, dtype=np.float32).reshape(len(rows), -1),
-             meta=np.array(meta, dtype=np.float64).reshape(len(meta), 5),
-             names=np.array(names if names else []), fold=fold)
-    return path
+    return (np.array(rows, dtype=np.float32).reshape(len(rows), -1),
+            np.array(meta, dtype=np.float64).reshape(len(meta), 5), names or [])
 
 
 def build_cmd(args):
@@ -488,13 +494,61 @@ def eval_cmd(args):
                                                  int(np.sum(nested < -1e-9))))
 
 
+def ours_cmd(args):
+    """Our match: v31_d1 (MTAH_VARIANT=_kt for the keeper-corrected tracking) + the proposals."""
+    import xgboost as xgb
+    import dfl_data as dd
+    import ours_chain as oc
+    import in_domain_team as idt
+    from atd_cache import load_arrays
+    from pipeline.features import LENGTH, WIDTH
+    from pipeline.run import RESULTS_DIR
+    import eval_touch_run as tr
+    codes, ex = oc.ours_v31(dead_prefix=os.path.join("models", "dead_ext_d1"))
+    variant = os.environ.get("MTAH_VARIANT", "")
+    ref_path = os.path.join(RESULTS_DIR, "v31_d1{}.csv".format(variant))
+    if os.path.isfile(ref_path):
+        ref = pm.label_codes(pm.read_label_csv(ref_path))
+        print("rebuilt base vs {}: {:.3f}% frames differ".format(os.path.basename(ref_path),
+                                                                 100 * np.mean(codes != ref)))
+    f = {k[2:]: v for k, v in ex.items() if k.startswith("f_")}
+    blk = [tuple(b) for b in ex["blk"]]
+    n = len(codes)
+    period = np.zeros(n, dtype=np.int8)
+    for i, (a, b) in enumerate(blk, start=1):
+        period[a:b] = i
+    c = dict(ex, period=period)
+    base = base_chain(c, f, blk, ex["pdead"])
+    print("base_chain equals ours_v31: {}".format(np.array_equal(base, codes)))
+    atd = load_arrays()
+    cols = idt.player_columns(atd["players"], atd["team"], period, (LENGTH, WIDTH))
+    d = {"players": atd["players"], "team": atd["team"], "period": period}
+    x, meta, names = match_rows(c, f, base, ex["pdead"], d, dd.blur_ball(atd["ball"]),
+                                (LENGTH, WIDTH), cols)
+    bst = xgb.Booster()
+    bst.load_model(os.path.join(OUT, "models", "{}_all.json".format(args.tag)))
+    p = bst.predict(xgb.DMatrix(x))
+    s = CHOSEN
+    disc = discount(n, meta, p, s["w"], s["p0"], s["half_s"], tr.SWITCH) if s["w"] > 0 else None
+    new = base_chain(c, f, blk, ex["pdead"], disc, span_boost(n, meta, p, f, s["b"], s["p0"],
+                                                              s["max_s"]))
+    print("candidates {}, p >= p0 {}; frames changed {:.2f}%".format(
+        len(p), int(np.sum(p >= s["p0"])), 100 * np.mean(new != base)))
+    for nm, cd in (("base", base), ("new", new)):
+        sp = pm.possession_spells(cd, pm.valid_runs(cd))
+        print("{}: {} possessions, D {:.1%}".format(nm, len(sp), np.mean(cd[cd != X] == D)))
+    if args.name:
+        print(oc.write_and_score(new, args.name))
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("build", "train", "eval"))
+    ap.add_argument("cmd", choices=("build", "train", "eval", "ours"))
+    ap.add_argument("--name")
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--tag", default="t1")
     args = ap.parse_args()
-    {"build": build_cmd, "train": train_cmd, "eval": eval_cmd}[args.cmd](args)
+    {"build": build_cmd, "train": train_cmd, "eval": eval_cmd, "ours": ours_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":

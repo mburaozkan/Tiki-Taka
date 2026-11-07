@@ -2725,6 +2725,19 @@ How it enters the decoder, on the v31_d1 chain (84 matches, nested = setting cho
 - Next: our match (public + full-match profile), then candidates without the base filter /
   short-weighted training, then onto v32_s1.
 
+**Our match** (`$env:MTAH_VARIANT="_kt"; python tools/turnover_cls.py ours --tag t1 --name
+v31_d1_to_kt`; model trained on all 84, chosen setting): the rebuilt base equals v31_d1_kt.csv
+byte for byte. 468 candidates, 54 proposals (12%; external matches 20%), 0.17% of frames change.
+
+| | public spF1 / mF1 | full poss | D |
+|---|---|---|---|
+| v31_d1_kt (base) | 0.800 / 0.939 | 225 | 48.7% |
+| **v31_d1_to_kt** | **0.800 / 0.939** | 230 | 48.7% |
+
+- Public unchanged (no public possession moves), +5 possessions on the full match: it splits a few
+  spells and nothing breaks. **v31_d1_to_kt.csv** written (valid): passes the rule (broadcast sets
+  clearly up, public within 0.04); candidate on top of the base, decision open.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
