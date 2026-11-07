@@ -2849,6 +2849,31 @@ external 20%). Public **0.800 / 0.939** (unchanged), full match 225 -> 233 posse
 gets about half the external proposal rate from both classifiers (fewer short possessions in a
 La Liga tactical feed, or a domain gap; not checked).
 
+### 2026-11-07: pairs without the decoder, and the perfect-pair oracle (`tools/pair_paste.py`)
+
+User: the catch rates are still too low; try it without the decoder. Pairs written straight over
+the base (best pair per t1), no decoder; oracle = every pair whose label is 1 (perfect classifier).
+
+| pairs pasted, no decoder | SkillCorner | PFF | caught < 2 s | 2-5 s | pred / true | precision |
+|---|---|---|---|---|---|---|
+| base v31_d1 | 0.6057 | 0.5539 | 5.1% | 26.9% | 0.81 | 64.1% |
+| **oracle (perfect pair classifier)** | **0.6505** | **0.6052** | **22.0%** | **40.1%** | 0.90 | 66.7% |
+| oracle, also over hand D | 0.6545 | 0.6080 | 23.4% | 41.2% | 0.90 | 67.1% |
+| p >= 0.05 | 0.5907 | 0.5543 | 14.1% | 36.8% | 1.00 | 57.3% |
+| p >= 0.1 | 0.6033 | 0.5643 | 12.4% | 34.6% | 0.93 | 60.6% |
+| p >= 0.2 | 0.6117 | 0.5692 | 10.4% | 32.8% | 0.88 | 62.9% |
+| p >= 0.5 | 0.6126 | 0.5631 | 7.4% | 29.1% | 0.83 | 64.2% |
+| (pairs + t1 through the decoder) | 0.6205 | 0.5655 | 7.8% | 31.2% | | |
+
+- Without the decoder the pairs catch more (10% at p >= 0.2, 14% at 0.05) at about the same score
+  as the decoder version (PFF a little better, SkillCorner a little worse); below 0.1 the false
+  spells cost more than the catches bring.
+- **Even a perfect pair classifier stops at 22% of the < 2 s possessions** (+0.045 / +0.051): the
+  candidates come from touch-network peaks at both ends, and for most short possessions those
+  peaks aren't there. Pasting over hand D adds little (+1.4 points).
+- So the cap is the touch-peak candidates, not the decoder or the classifier: a sharper method has
+  to find short spells without relying on the current touch peaks.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
