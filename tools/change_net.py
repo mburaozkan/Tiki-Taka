@@ -379,6 +379,8 @@ def hyb_cmd(args):
 # ---------------------------------------------------------------- mix: the decoder sees the base and the net
 
 MIX = {"alpha": (0.3, 0.5, 0.7), "beta": (0.0, 0.5, 1.0), "dfix": (0, 1)}
+if os.environ.get("CN_MIX"):
+    MIX = {"alpha": tuple(float(v) for v in os.environ["CN_MIX"].split(",")), "beta": (0.0,), "dfix": (0,)}
 
 
 def mix_pr(pr, base, blk, alpha, beta):

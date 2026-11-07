@@ -3181,6 +3181,13 @@ held out; public on our match):
   the see-saw is softer, still there.
 - Running: c1chdl (chain evidence only + DFL).
 
+**c1chdl (chain evidence only + DFL x5):** SC / PFF alone 0.6620 / 0.6442 (nested +0.019 / +0.008 vs
+e3k), DFL alone 0.6442 (7/0), public alone 0.480. **Mixed with the base at alpha 0.5: public 0.800 /
+0.939 (unchanged), DFL 0.6260 (7/0, +0.023), SkillCorner 0.6238, PFF 0.5772** (base v31_d1 0.6057 /
+0.5539, so +0.018 / +0.023; e3k 0.6421 / 0.6370 is higher there). The first setting that keeps the
+public window and lifts all three external sets over v31_d1; below e3k on SkillCorner / PFF.
+c1dl10 (DFL x10) was stopped for time; rerun next session.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
