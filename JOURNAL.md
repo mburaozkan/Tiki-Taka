@@ -3188,6 +3188,12 @@ e3k), DFL alone 0.6442 (7/0), public alone 0.480. **Mixed with the base at alpha
 public window and lifts all three external sets over v31_d1; below e3k on SkillCorner / PFF.
 c1dl10 (DFL x10) was stopped for time; rerun next session.
 
+**Where c1dl still loses on DFL** (held out, 0.6514; oracle gains, each alone): dead / live perfect
+(team from the net) +0.023; **team perfect on live frames (dead / live from the net) +0.269**;
+possessions that start with a turnover written in from the truth +0.225, those that start after a
+stoppage +0.097; by length < 2 s +0.087, 2-5 s +0.100, 5-10 s +0.069, >= 10 s +0.064. **The remaining
+gap on DFL is the team decision, i.e. the turnovers**, not the dead ball (c1dl fixed most of that).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
