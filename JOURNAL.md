@@ -2917,6 +2917,26 @@ Frames with P(inside) >= 0.5: 2.8% (external true short frames 4.5%).
   are the long kick -> brief contact kind, where height carries the event; next: the same network
   without ball height.
 
+**Why the gain is smaller than the catches suggest** (`tools/short_gain.py --hi 0.7 --over-d`):
+
+| | SkillCorner | PFF |
+|---|---|---|
+| base v31_d1 | 0.6057 | 0.5539 |
+| short net, all pasted (real) | +0.0286 | +0.0740 |
+| only the pasted spells that are right (IoU >= 0.5 to a true one) | +0.0726 | +0.0995 |
+| the right ones with the true boundaries | +0.0894 | +0.1199 |
+| oracle: every true possession < 5 s | +0.2078 | +0.2265 |
+
+- **Missed short possessions are still the biggest part** (+0.12 / +0.11 left): of the 9,052 true
+  possessions < 5 s, the best predicted spell has IoU >= 0.7 for 31%, 0.6-0.7 8%, 0.5-0.6 7%,
+  0.3-0.5 12%, < 0.3 41%.
+- **False spells give back about half the gain on SkillCorner, a quarter on PFF** (-0.044 /
+  -0.026): 44% of the 8,137 pasted spells are false; of those 45% sit inside a possession of the
+  other team (they split it), 43% inside a longer one of the same team, 12% in D.
+- **Boundaries** cost -0.017 / -0.020 (spellF1 averages IoU 0.3-0.7).
+- Next, in order: a keep / drop check per pasted spell (ceiling +0.044 / +0.026), boundaries from
+  the start / end heads (~+0.02), then recall (seed ensemble, longer training, larger model).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
