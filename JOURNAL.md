@@ -2937,6 +2937,40 @@ Frames with P(inside) >= 0.5: 2.8% (external true short frames 4.5%).
 - Next, in order: a keep / drop check per pasted spell (ceiling +0.044 / +0.026), boundaries from
   the start / end heads (~+0.02), then recall (seed ensemble, longer training, larger model).
 
+### 2026-11-07: keep / drop check per short-net spell, edges from the start / end heads (`tools/short_check.py`)
+
+Spells generated from the net's held-out P(inside) at a threshold `gen`, then an XGBoost check
+(4 fixed folds) keeps or drops each: the net's P(inside) over the spell and at its edges, the other
+team's P, start / end head peaks, the net's class P over / before / after, the base's codes over /
+before / after, hand D, P(dead), and the single-touch inputs (v2) at both ends. Label: a true
+possession of that team with IoU >= 0.5. Edges: start / end moved to the start / end head's peak
+within +/- 0.5 s (if >= 0.2).
+
+| spells generated at | spells | right | check AUC (net's mean P alone) |
+|---|---|---|---|
+| 0.4 | 10,995 | 41% | 0.778 (0.708) |
+| 0.6 | 9,781 | 51% | 0.767 (0.698) |
+| 0.7 | 8,137 | 56% | 0.752 (0.677) |
+
+| setting (all also over D) | SkillCorner | PFF | caught < 2 s / 2-5 s | pred / true | precision |
+|---|---|---|---|---|---|
+| plain net, hi 0.7 (before) | 0.6343 (18/2) | 0.6278 (64/0) | 26.7% / 58.7% | 1.05 | 62.7% |
+| gen 0.4, keep >= 0.3, edges | 0.6303 | 0.6157 | 17.6% / 50.9% | 0.97 | 64.0% |
+| gen 0.6, keep >= 0.2, edges | 0.6381 | 0.6322 (64/0) | 24.2% / 57.8% | 1.02 | 64.0% |
+| **gen 0.6, keep >= 0.3, edges** | **0.6411 (20/0)** | **0.6303 (64/0)** | 21.8% / 55.2% | 0.99 | 65.0% |
+| gen 0.6, keep >= 0.4, edges | 0.6429 (19/1) | 0.6271 | 19.6% / 52.7% | 0.96 | 65.7% |
+| gen 0.7, keep >= 0.2 | 0.6374 | 0.6310 | 23.0% / 56.5% | 1.00 | 64.4% |
+
+Nested 4-fold (gen 0.6): SkillCorner +0.0326, PFF +0.0772 (82/2); gen 0.7: +0.0317 / +0.0771 (83/1).
+- The check adds a little over the plain net (+0.005 SkillCorner, +0.002 PFF at the best setting)
+  and every match goes up, but it buys precision with catches (< 2 s 27% -> 22%). Its AUC is only
+  0.75-0.78: it can't tell the false spells from the right ones much better than the net's own P.
+- Loose generation (0.4) is worse: neighbouring spells merge into longer, wrong ones.
+- Edges from the start / end heads: +0.000-0.005, small (more on PFF and with loose spells).
+- So the false spells aren't separable with these inputs either; the remaining lever is a better
+  net (recall and sharper P). Running: a second seed (s1b), a larger net (hidden 192, 20 epochs,
+  s2), and the net without ball height (s1nz).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

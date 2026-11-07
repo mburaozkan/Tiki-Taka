@@ -236,6 +236,9 @@ def norm_stats(xs):
     return mu.astype(np.float32), sd.astype(np.float32)
 
 
+HID = int(os.environ.get("SN_HID", "128"))
+
+
 def train_one(keys, epochs, seed=0, log=""):
     import torch
     torch.manual_seed(seed)
@@ -244,7 +247,7 @@ def train_one(keys, epochs, seed=0, log=""):
     mu, sd = norm_stats(xs)
     perm, sign = swap_index()
     dev = "cuda"
-    model = make_model(xs[0].shape[1]).to(dev)
+    model = make_model(xs[0].shape[1], HID).to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
     total_frames = sum(len(x) for x in xs)
     steps_per_epoch = total_frames // (CROP * 32)
@@ -321,13 +324,14 @@ def train_cmd(args):
     preds = dict(np.load(pred_path)) if os.path.isfile(pred_path) else {}
     for fold in args.folds:
         if fold == "all":
-            model, mu, sd = train_one([(n, g) for n, g, _ in ext], args.epochs, log="all")
+            model, mu, sd = train_one([(n, g) for n, g, _ in ext], args.epochs,
+                                      seed=100 * args.seed, log="all")
             torch.save({"state": model.state_dict(), "mu": mu, "sd": sd,
-                        "n_in": len(mu)}, os.path.join(MODELS, "{}_all.pt".format(args.tag)))
+                        "n_in": len(mu), "hid": HID}, os.path.join(MODELS, "{}_all.pt".format(args.tag)))
             continue
         k = int(fold)
         model, mu, sd = train_one([(n, g) for n, g, f in ext if f != k], args.epochs,
-                                  seed=k, log="fold %d" % k)
+                                  seed=k + 100 * args.seed, log="fold %d" % k)
         for n, g, f in ext:
             if f == k:
                 x = drop_channels(np.load(os.path.join(OUT, "in_{}_{}.npy".format(n, g))))
@@ -441,7 +445,7 @@ def ours_cmd(args):
     x = drop_channels(frame_inputs(c, f, d, dd.blur_ball(atd["ball"]), (LENGTH, WIDTH),
                                    ex["pdead"], sign))
     ck = torch.load(os.path.join(MODELS, "{}_all.pt".format(args.tag)), weights_only=False)
-    model = make_model(ck["n_in"]).cuda()
+    model = make_model(ck["n_in"], ck.get("hid", 128)).cuda()
     model.load_state_dict(ck["state"])
     pr = predict(model, ck["mu"], ck["sd"], x)
     z = (x.astype(np.float32) - ck["mu"]) / ck["sd"]
@@ -469,23 +473,38 @@ def ours_cmd(args):
             print(oc.write_and_score(new, "{}_h{:g}".format(args.name, hi).replace(".", "")))
 
 
+def avg_cmd(args):
+    """pred_<tag>.npz = mean of pred_<t>.npz for t in --from (an ensemble of held-out predictions)."""
+    zs = [np.load(os.path.join(OUT, "pred_{}.npz".format(t))) for t in args.src]
+    keys = set(zs[0].files).intersection(*[z.files for z in zs[1:]])
+    np.savez(os.path.join(OUT, "pred_{}.npz".format(args.tag)),
+             **{k: np.mean([z[k].astype(np.float32) for z in zs], axis=0).astype(np.float16)
+                for k in keys})
+    print("pred_{}: mean of {} over {} matches".format(args.tag, args.src, len(keys)))
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("prep", "train", "eval", "ours"))
+    ap.add_argument("cmd", choices=("prep", "train", "eval", "ours", "avg"))
+    ap.add_argument("--src", nargs="+", default=[])
     ap.add_argument("--name")
     ap.add_argument("--hi", type=float, nargs="+", default=[0.6])
     ap.add_argument("--over-d", action="store_true")
     ap.add_argument("--drop", default="", help="channels to zero, e.g. bz")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--hid", type=int, default=128)
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--tag", default="s1")
     ap.add_argument("--folds", nargs="+", default=["0", "1", "2", "3"])
     ap.add_argument("--epochs", type=int, default=12)
     args = ap.parse_args()
-    global DROP
+    global DROP, HID
+    HID = args.hid
     if args.drop:
         DROP = args.drop.split(",")
         os.environ["SN_DROP"] = args.drop
-    {"prep": prep_cmd, "train": train_cmd, "eval": eval_cmd, "ours": ours_cmd}[args.cmd](args)
+    {"prep": prep_cmd, "train": train_cmd, "eval": eval_cmd, "ours": ours_cmd,
+     "avg": avg_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":
