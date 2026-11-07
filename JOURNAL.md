@@ -2667,6 +2667,10 @@ what matters now: at each true possession start, a picked touch of the new team 
 | picked touches per graded minute | 31.5 -> 21.6 | 28.5 -> 17.4 |
 
 After a stoppage it is worse still (SkillCorner short 25% -> 7%; PFF about level).
+**All 84 matches (rebuild finished):** the same; PFF short after a team change 49% -> 40% picked,
+peak P >= 0.3 67% -> 54% (SkillCorner 78% -> 69%). The turnover classifier's candidates (current
+network, peaks >= 0.3) cover 67-78% of short starts after a team change. s1w3 (short-weighted
+first stage) is trained (folds + all); its eval is for next session.
 - The external network is less confident and picks a third fewer touches, so it finds fewer starts,
   short ones included: its targets (every event touch, both sides of duels, releases) made it
   cautious. The tx5 branch is not expected to help the small touches.
