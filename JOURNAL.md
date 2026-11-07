@@ -2874,6 +2874,49 @@ the base (best pair per t1), no decoder; oracle = every pair whose label is 1 (p
 - So the cap is the touch-peak candidates, not the decoder or the classifier: a sharper method has
   to find short spells without relying on the current touch peaks.
 
+### 2026-11-07: short-possession network, no touch peaks (`tools/short_net.py`)
+
+User: stop depending on touch peaks, build a network. A frame-level detector trained only on short
+possessions (< 5 s) of the 84 external matches.
+- Inputs per frame (47, 25 fps): ball x (toward home's attack), y, height, velocity, acceleration,
+  speed, seen, gap; per team in its own attacking direction: 3 nearest players' distances, players
+  within 2 / 5 / 10 m, the nearest player's speed and run toward the ball, team centroid and
+  spread, touch-network P as a continuous signal, distance / carrier / co-movement features,
+  first-stage P, refiner log-odds, run vote; shared: hand D, dead head P, ball out, keeper hold.
+- Targets: inside a short possession of H / A, its start / end (Gaussian, sigma 2 frames),
+  possession class as a helper. Dilated 1D convolutions (1-16) + 2-layer bidirectional GRU,
+  20 s crops, H/A swap augmentation, 12 epochs (~4 min per fold on the GPU). 4 fixed folds.
+- Spells: hysteresis runs of P(inside) (>= hi, extended while >= hi - 0.15), 0.2-5 s, written over
+  the base (live frames, or also over D). No decoder.
+
+Held-out frame AUC of P(inside a short possession) **0.959**. On all 84 matches:
+
+| setting | SkillCorner | PFF | up/down | caught < 2 s | 2-5 s | pred / true | precision |
+|---|---|---|---|---|---|---|---|
+| base v31_d1 | 0.6057 | 0.5539 | | 5.1% | 26.9% | 0.81 | 64.1% |
+| pairs + t1 (previous candidate) | 0.6205 | 0.5655 | 77/7 | 7.8% | 31.2% | | |
+| paste hi 0.6, live only | 0.6117 | 0.5904 | 74/10 | 19.5% | 46.4% | 1.02 | 60.1% |
+| paste hi 0.8, live only | 0.6189 | 0.5951 | 80/4 | 16.3% | 41.8% | 0.94 | 63.1% |
+| paste hi 0.6, also over D | 0.6312 | 0.6246 | 81/3 | **28.8%** | **61.5%** | 1.10 | 61.1% |
+| **paste hi 0.7, also over D** | **0.6343 (+0.029)** | **0.6278 (+0.074)** | **82/2** | 26.7% | 58.7% | 1.05 | 62.7% |
+
+- **The short catch rate jumps from 5% to 27-29%** (2-5 s: 27% -> 59-62%), past the 22% ceiling
+  of the touch-peak pairs, and the score with it: the largest gain on the broadcast sets so far.
+- Pasting also over D adds a lot (short possessions right after restarts / before stoppages), but
+  the broadcast sets mark D wider than the organisers do (out tag to restart touch), so part of
+  that gain may not transfer.
+
+**Our match** (`$env:MTAH_VARIANT="_kt"; python tools/short_net.py ours --tag s1 --hi 0.6 0.7 0.8
+[--over-d] --name ...`; model on all 84): public **0.800 / 0.939 in every variant, the public
+window is unchanged**; full match 225 -> 243-253 possessions (live only), 245-260 (over D).
+Frames with P(inside) >= 0.5: 2.8% (external true short frames 4.5%).
+- Peak P(inside a short spell of their team) at the public short possessions: #3 0.49, #7 0.28,
+  **#10 0.05, #12 0.01**, #13 0.00, #15 0.28. The network doesn't see #10 / #12 at all.
+- Input shift vs the external training data is small (all channels within 0.45 training sd), except
+  **ball height: almost no variation on our match** (std 0.28 of the training spread). #10 / #12
+  are the long kick -> brief contact kind, where height carries the event; next: the same network
+  without ball height.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
