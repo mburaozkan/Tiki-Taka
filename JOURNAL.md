@@ -2687,6 +2687,44 @@ Also running / done today: `ext_stage1.py` has an XGBoost GPU backend (`--gbm xg
 installed in the venv with uv; LightGBM here has no GPU build), and evals report possessions caught
 by length (< 2 s, 2-5 s).
 
+### 2026-11-07: turnover classifier on SkillCorner + PFF (`tools/turnover_cls.py`), first pass
+
+Candidates: peaks (+/- 0.2 s) of the current touch network's P(touch by T) >= 0.3 where the
+working base (v31_d1) has the other team 0.2 s before. Target: a true possession of T starts within
++/- 0.5 s. 256 inputs, all oriented to T: touch P of both teams around the peak, the previous / next
+3 picked touches (team, time), first stage / refiner / run vote / hand D at -1 to +3 s, the paired
+features (distances, carrier, co-movement, goal distance) at the same offsets, ball speed / height /
+direction change / travel and gain toward T's attack, players of each team near the ball now and
+at +0.5 / 1 / 2 s, reaction columns, how long the base's current spell has lasted. XGBoost (GPU),
+4 fixed folds (each match scored by the model that never saw it).
+
+- 38,846 candidates, 14.6% positive. They cover the starts after a team change that the base
+  misses at the touch: < 2 s 48% (SkillCorner) / 35% (PFF), 2-5 s 50% / 37%.
+- Held-out **AUC 0.880** (touch peak P alone 0.659), AP 0.61. At p >= 0.5: precision 0.69, recall
+  0.39; recall of short (< 2 s) starts is lower (0.22). Top inputs: the first stage 0.5-1 s after
+  the touch, hand D at +3 s, the refiner after, ball direction change, ball gain toward T's attack.
+
+How it enters the decoder, on the v31_d1 chain (84 matches, nested = setting chosen on 3 folds):
+
+| use of P(start) | SkillCorner | PFF | nested | caught < 2 s / 2-5 s |
+|---|---|---|---|---|
+| base v31_d1 | 0.6057 | 0.5539 | | 5.1% / 26.9% |
+| cheaper switch into T only (best of 32) | +0.0011 | +0.0004 | +0.0005 (24/16) | 5.2% / 27.1% |
+| + soft boost toward T up to the next touch of the other team (b 2) | +0.0046 | +0.0033 | +0.0036 (53/24) | 5.7% / 27.9% |
+| **hard proposal: p >= 0.2, b 8, span <= 5 s, no discount** | **+0.0116 (18/2)** | **+0.0081 (51/13)** | **+0.0088-0.0090 (66-69/15-18)** | **7.0% / 30.1%** |
+| b 20 / 40 | +0.0105-0.0124 | +0.0080-0.0087 | | 7.3-7.6% / 30-31% |
+
+- **A cheaper switch alone does nothing**: a short spell also has to pay the switch back, and the
+  first stage is ~0.5 inside it. The classifier has to put evidence over the spell itself (from the
+  touch to the other team's next picked touch); then the decoder takes it.
+- Plateau from b 8 up (the boost is then a near-hard proposal); the threshold p0 0.2-0.3 and the
+  span cap 5-8 s barely matter.
+- A clear gain (about the size of step 2's first stage), but the short catch rates move little
+  (< 2 s 5 -> 7%). Limits: candidates reach only 35-48% of short starts (the base-before filter
+  and the peak rule) and the classifier recalls short starts worse than long ones.
+- Next: our match (public + full-match profile), then candidates without the base filter /
+  short-weighted training, then onto v32_s1.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
