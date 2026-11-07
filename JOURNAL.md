@@ -3287,6 +3287,9 @@ its weak point (about half found within 1 s on DFL).
    c. ball after a contact: next movement toward the new owner's teammates (pass / carry) vs a deflection;
    d. our own ball detection from the video (larger job).
 3. Judged on DFL + SC + PFF full matches; public only to catch breaks.
+0. First: the "why missed" breakdown (by length: wrong team / D / merged / split / shifted) for c1dl on
+   DFL, to check that the losses on possessions >= 5 s are edges and merges with missed short
+   neighbours rather than whole possessions given to the wrong team.
 
 **Next session (agreed 2026-11-07): turnover classifier for the short possessions.** Base:
 v31_d1_kt (working base; the submitted file is v31_kt). Candidate on top: v32_s1_kt (first stage
