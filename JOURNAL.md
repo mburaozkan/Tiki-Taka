@@ -3095,6 +3095,35 @@ true change): #1 -> #2 switches 4.9 s early, #7 is missed, and #6 runs into #8.
   short net did (2.8% vs 4.5% flagged). Next: find which inputs shift (idea 3: a classifier, ours vs
   external windows), then retrain without them or with domain adaptation.
 
+### 2026-11-08: why the change net loses the public window, and the see-saw (`tools/cn_diag.py`, `change_net.py mix`)
+
+**Public window, net decoded alone vs v31_d1:** true D frames called D 51% vs 86%; team right on
+live frames 90% vs 96%. At the 18 s stoppage before #15 the net's stoppage head is 0.00 and P(D)
+0.00. Its team head is confidently wrong on short stretches (#5 P(A) 0.16 just after it starts, #10 /
+#12 P(H) 0.03-0.07, #15 0.03), and at #7 the turnover head peaks 0.55 but the class head says 0.39, so
+the decoder skips it and #6 runs 46.8 s on. Four such misses take 17 possessions from 0.80 to 0.44.
+**On the full match the net behaves as it does externally:** change-head peaks per live minute
+4.0-4.5 (external 4.5), class confidence 0.90 (0.93); it differs from the base on 13% of frames
+(team 5.1%, base D -> net live 4.9%, base live -> net D 3.2%). Input shift: ball height almost flat
+on our match (sd ratio 0.30), keeper hold sd ratio 2.30, home spread +0.51 sd; the rest within 0.35 sd.
+
+**Mix: the decoder sees both** (class head blended with the base's codes, weight alpha; the base's
+changes added to the change heads, beta; optionally the base's D fixed):
+
+| alpha (weight on the base) | public | SkillCorner | PFF |
+|---|---|---|---|
+| 0 (net alone) | 0.443 | 0.7195 | 0.7461 |
+| 0.3 | 0.587 (0.600 with D fixed) | 0.7050 | 0.7264 |
+| 0.5, beta 1, D fixed | 0.800 | 0.6141 | 0.5783 |
+| 0.7 (= the base) | 0.800 | 0.6057 | 0.5539 |
+
+beta changes little. **A clean see-saw: every step that brings the public window back takes the
+external gain away.** Either the net can't read our match (domain), or SkillCorner / PFF define
+possession and D differently from the organisers and the net learns their definition while v31_d1
+was built on ours (v31_d1: public 0.80, external 0.55-0.61). DFL would separate the two, but the base's
+first stage and refiner were trained on DFL (in-sample there), so a fair DFL test needs the leak-free
+first stage. Running: the net without ball height and keeper hold (c1nz).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

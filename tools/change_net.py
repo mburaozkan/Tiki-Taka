@@ -339,15 +339,109 @@ def hyb_cmd(args):
         int(np.sum(nested > 1e-9)), int(np.sum(nested < -1e-9))))
 
 
-def ours_cmd(args):
-    """Our match (MTAH_VARIANT=_kt): the all-84 model, decoded alone and with v31_d1's D fixed."""
+# ---------------------------------------------------------------- mix: the decoder sees the base and the net
+
+MIX = {"alpha": (0.3, 0.5, 0.7), "beta": (0.0, 0.5, 1.0), "dfix": (0, 1)}
+
+
+def mix_pr(pr, base, blk, alpha, beta):
+    """pr with the class head blended with the base's codes (weight alpha) and the base's own
+    changes added to the change heads (max with beta x a sigma-2 bump at each base change)."""
+    bf = pm.fill_abstentions(base, [tuple(b) for b in blk])
+    cls = np.full(len(bf), -1, np.int8)
+    cls[bf == H], cls[bf == A], cls[bf == D] = 0, 1, 2
+    inb = np.zeros(len(bf), bool)
+    for a, b in blk:
+        inb[a:b] = True
+    cls[~inb] = -1
+    q = pr.copy()
+    oh = np.zeros((len(bf), 3), np.float32)
+    oh[cls >= 0, cls[cls >= 0]] = 1.0
+    oh = 0.9 * oh + 0.1 / 3
+    q[:, N_TGT:] = np.where((cls >= 0)[:, None], (1 - alpha) * pr[:, N_TGT:] + alpha * oh, pr[:, N_TGT:])
+    if beta > 0:
+        q[:, :N_TGT] = np.maximum(pr[:, :N_TGT], beta * targets_from_cls(cls))
+    return q, bf == D
+
+
+def mix_settings():
+    return [dict(zip(MIX, v)) for v in itertools.product(*MIX.values())]
+
+
+def mix_label(st):
+    return "alpha {:.1f} beta {:.1f}{}".format(st["alpha"], st["beta"], " dfix" if st["dfix"] else "")
+
+
+def mix_match(job):
+    name, g, tag, settings, w, bias = job
+    import run_v31_external as rx
+    import miss_profile as M
+    from decoder_sweep import stats
+    key = "{}_{}".format(name, g)
+    with np.load(os.path.join(OUT, "pred_{}.npz".format(tag))) as z:
+        pr = z[key].astype(np.float32)
+    c, f, lab, base, cand, _ = M.candidate((name, g, "e3", 0.6, "k1", 0.3))
+    blk = rx.blocks(c["period"])
+    res = [stats(lab, cand), stats(lab, base), stats(lab, viterbi(pr, blk, w, bias))]
+    for st in settings:
+        q, dm = mix_pr(pr, base, blk, st["alpha"], st["beta"])
+        res.append(stats(lab, viterbi(q, blk, w, bias, dm if st["dfix"] else None)))
+    return name, g, np.array(res, float)
+
+
+def mix_cmd(args):
+    import run_v31_external as rx
+    import turnover_cls as T
+    settings = mix_settings()
+    if args.ours:
+        import ours_chain as oc
+        z = np.load(os.path.join(OUT, "ours_{}.npz".format(args.tag)))
+        pr, base, blk = z["pr"].astype(np.float32), z["base"], [tuple(b) for b in z["blk"]]
+        print("  " + str(oc.write_and_score(base, "v31_d1_basecheck")))
+        print("  " + str(oc.write_and_score(viterbi(pr, blk, args.w, args.bias),
+                                           "cn_{}_alone".format(args.tag))))
+        for st in settings:
+            q, dm = mix_pr(pr, base, blk, st["alpha"], st["beta"])
+            out = viterbi(q, blk, args.w, args.bias, dm if st["dfix"] else None)
+            nm = "cn_{}_a{:g}b{:g}{}".format(args.tag, st["alpha"], st["beta"],
+                                             "d" if st["dfix"] else "").replace(".", "")
+            print("  " + str(oc.write_and_score(out, nm)) + "   <- " + mix_label(st))
+        return
+    jobs = [(n, g, args.tag, settings, args.w, args.bias) for n, g, _ in T.ext_list()]
+    with Pool(6) as pool:
+        res = pool.map(mix_match, jobs, chunksize=1)
+    names = np.array([r[0] for r in res])
+    folds = np.array([rx.fold_of(r[0], r[1]) for r in res])
+    arr = np.stack([r[2] for r in res])
+    labels = ["candidate e3k", "base v31_d1", "net alone"] + [mix_label(s) for s in settings]
+    print("mix, change net {} (w {:g}, bias {:g}); up/down vs candidate e3k".format(args.tag, args.w, args.bias))
+    for j, lb in enumerate(labels):
+        parts = []
+        for nm in ("skillcorner", "pff"):
+            v = arr[names == nm, j, 0]
+            d = v - arr[names == nm, 0, 0]
+            parts.append("{:.4f} {:>3}/{:<3}".format(v.mean(), int(np.sum(d > 1e-9)), int(np.sum(d < -1e-9))))
+        t = arr[:, j, 1:].sum(axis=0)
+        print("  {:<24} SC {}  PFF {} | caught <2s {:.1%} 2-5s {:.1%} | pred/true {:.2f} prec {:.1%}".format(
+            lb, parts[0], parts[1], t[1] / t[0], t[3] / t[2], t[5] / t[4], t[6] / t[5]))
+    gain = arr[:, 3:, 0] - arr[:, :1, 0]
+    nested = np.zeros(len(arr))
+    for k in range(T.FOLDS):
+        j = int(np.argmax(gain[folds != k].mean(axis=0)))
+        nested[folds == k] = gain[folds == k, j]
+    print("nested 4-fold (mix settings) vs candidate: SkillCorner {:+.4f}, PFF {:+.4f} ({}/{})".format(
+        nested[names == "skillcorner"].mean(), nested[names == "pff"].mean(),
+        int(np.sum(nested > 1e-9)), int(np.sum(nested < -1e-9))))
+
+
+def ours_setup(tag):
+    """(pr, base, blk, c, ex, x) on our match (MTAH_VARIANT=_kt); pr / x cached in OUT/ours_<tag>.npz."""
     import torch
     import dfl_data as dd
     import ours_chain as oc
     import turnover_cls as T
     from atd_cache import load_arrays
     from pipeline.features import LENGTH, WIDTH
-    from report import PUBLIC_GT
     S.N_TGT = N_TGT
     codes, ex = oc.ours_v31(dead_prefix=os.path.join("models", "dead_ext_d1"))
     f = {k[2:]: v for k, v in ex.items() if k.startswith("f_")}
@@ -362,10 +456,22 @@ def ours_cmd(args):
     d = {"players": atd["players"], "team": atd["team"], "period": period}
     sign = T.attack_sign(d, period)
     x = S.frame_inputs(c, f, d, dd.blur_ball(atd["ball"]), (LENGTH, WIDTH), ex["pdead"], sign)
-    ck = torch.load(os.path.join(MODELS, "{}_all.pt".format(args.tag)), weights_only=False)
+    ck = torch.load(os.path.join(MODELS, "{}_all.pt".format(tag)), weights_only=False)
     model = S.make_model(ck["n_in"], ck.get("hid", 128)).cuda()
     model.load_state_dict(ck["state"])
-    pr = S.predict(model, ck["mu"], ck["sd"], x)
+    pr = S.predict(model, ck["mu"], ck["sd"], S.drop_channels(x))
+    np.savez(os.path.join(OUT, "ours_{}.npz".format(tag)), pr=pr, x=x.astype(np.float16), base=base,
+             blk=np.array(blk))
+    return pr, base, blk, c, ex, x
+
+
+def ours_cmd(args):
+    """Our match (MTAH_VARIANT=_kt): the all-84 model, decoded alone and with v31_d1's D fixed."""
+    import ours_chain as oc
+    import turnover_cls as T
+    from report import PUBLIC_GT
+    pr, base, blk, c, ex, x = ours_setup(args.tag)
+    f = {k[2:]: v for k, v in ex.items() if k.startswith("f_")}
     nb = len(pm.possession_spells(base, pm.valid_runs(base)))
     print("v31_d1 base: {} possessions, D {:.1%}".format(nb, np.mean(base == D)))
     gt = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
@@ -400,16 +506,19 @@ def M_changes(codes):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("train", "eval", "ours", "hyb"))
+    ap.add_argument("cmd", choices=("train", "eval", "ours", "hyb", "mix"))
     ap.add_argument("--name", default="v31_d1_cn")
     ap.add_argument("--tag", default="c1")
     ap.add_argument("--folds", nargs="+", default=["0", "1", "2", "3"])
     ap.add_argument("--epochs", type=int, default=12)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--ours", action="store_true", help="mix: on our match (needs ours_<tag>.npz)")
+    ap.add_argument("--w", type=float, default=1.0)
+    ap.add_argument("--bias", type=float, default=-3.0)
     ap.add_argument("--hyb", action="store_true", help="ours: v31_d1 + the class head as team boost")
     ap.add_argument("--dfix", action="store_true", help="eval: D frames fixed to the candidate's")
     args = ap.parse_args()
-    {"train": train_cmd, "eval": eval_cmd, "ours": ours_cmd, "hyb": hyb_cmd}[args.cmd](args)
+    {"train": train_cmd, "eval": eval_cmd, "ours": ours_cmd, "hyb": hyb_cmd, "mix": mix_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":
