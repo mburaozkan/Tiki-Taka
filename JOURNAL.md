@@ -3131,6 +3131,30 @@ the cause. So the problem isn't a few odd channels: the net confidently overrule
 first-stage evidence (same inputs that give the base 96% team accuracy) with what it learned from
 SkillCorner / PFF. That points to the definition / domain of the external labels as a whole.
 
+### 2026-11-08: DFL as a third, unseen provider (`tools/cn_dfl.py`)
+
+DFL's 7 full matches, realistic treatment (dead ball animated, blur, our gaps). The base v31_d1 is
+held out per match (leave-one-match-out first stage, refine_b2, dead head d1's held-out DFL
+predictions): mean **0.6034**. Every SkillCorner / PFF model here has never seen DFL.
+
+| setting | DFL spellF1 | up/down | caught < 2 s / 2-5 s | change recall 1 s: turnover / stop / restart |
+|---|---|---|---|---|
+| base v31_d1 | 0.6034 | | 4.2% / 26.7% | 40% / 47% / 32% |
+| change net c1 alone (w 1, bias -3) | 0.6065 | 5/2 | 12.6% / 37.8% | 43% / 58% / 40% |
+| c1 alone, base D fixed | 0.5823 | 2/5 | | |
+| c1 mix alpha 0.3 | 0.6121 | 5/2 | 9.5% / 32.0% | 42% / 60% / 42% |
+| c1 mix alpha 0.5 | 0.6100 | 6/1 | | |
+| c1nz alone | 0.5964 | 3/4 | | |
+| short net e3, hi 0.8 over D (no check) | 0.6146 | 4/3 | 10.5% / 38.2% | |
+| short net e3, hi 0.7 over D | 0.6092 | 4/3 | 14.4% / 40.8% | |
+
+- **The SkillCorner / PFF gains nearly vanish on DFL:** change net +0.003 (vs +0.078 / +0.109
+  nested there), short net +0.006 to +0.011 (vs +0.03 / +0.07). DFL sides with our match.
+- So models trained on SkillCorner + PFF learn something those two providers share (definition
+  of possession / D, how their tracking looks) that DFL and our match don't. Selecting candidates
+  on SkillCorner + PFF alone (since 2026-11-06) overstates their value.
+- Next: DFL into training (c1dl, DFL sampled x5, DFL held out by fold), and leave one provider out.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

@@ -64,11 +64,38 @@ def targets_from_cls(cls):
     return y
 
 
+DFL_W = float(os.environ.get("CN_DFL", "0"))     # > 0: DFL's 7 matches join training, sampled x this
+
+
+def load_x(name, g):
+    if name == "dfl":
+        with np.load(os.path.join(OUT, "dfl_{}.npz".format(g))) as z:
+            return S.drop_channels(z["x"])
+    return S.drop_channels(np.load(os.path.join(S.OUT, "in_{}_{}.npy".format(name, g))))
+
+
+def load_cls(name, g):
+    if name == "dfl":
+        with np.load(os.path.join(OUT, "dfl_{}.npz".format(g))) as z:
+            lab = z["lab"]
+        return np.where(lab <= 2, lab, -1).astype(np.int8)
+    return np.load(os.path.join(S.OUT, "c_{}_{}.npy".format(name, g)))
+
+
+def train_list():
+    import turnover_cls as T
+    import dfl_data as dd
+    ext = list(T.ext_list())
+    if DFL_W > 0:
+        ext += [("dfl", g, i % 4) for i, g in enumerate(dd.GAMES)]
+    return ext
+
+
 def load_data(keys):
     xs, ys, cs = [], [], []
     for name, g in keys:
-        xs.append(S.drop_channels(np.load(os.path.join(S.OUT, "in_{}_{}.npy".format(name, g)))))
-        c = np.load(os.path.join(S.OUT, "c_{}_{}.npy".format(name, g)))
+        xs.append(load_x(name, g))
+        c = load_cls(name, g)
         cs.append(c)
         ys.append(targets_from_cls(c))
     return xs, ys, cs
@@ -89,6 +116,7 @@ def train_one(keys, epochs, seed=0, log=""):
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=2e-3, total_steps=epochs * steps)
     pos_w = torch.tensor([20.0] * N_TGT, device=dev)
     lens = np.array([len(x) for x in xs], dtype=np.float64)
+    lens *= np.array([DFL_W if n == "dfl" else 1.0 for n, _ in keys])
     pm_ = lens / lens.sum()
     t0 = time.time()
     for ep in range(epochs):
@@ -135,7 +163,7 @@ def train_cmd(args):
     import torch
     import turnover_cls as T
     S.N_TGT = N_TGT
-    ext = T.ext_list()
+    ext = train_list()
     os.makedirs(MODELS, exist_ok=True)
     pred_path = os.path.join(OUT, "pred_{}.npz".format(args.tag))
     preds = dict(np.load(pred_path)) if os.path.isfile(pred_path) else {}
@@ -145,13 +173,22 @@ def train_cmd(args):
             torch.save({"state": model.state_dict(), "mu": mu, "sd": sd, "n_in": len(mu), "hid": HID},
                        os.path.join(MODELS, "{}_all.pt".format(args.tag)))
             continue
+        if fold.startswith("hold:"):                 # leave one provider out
+            prov = fold[5:]
+            model, mu, sd = train_one([(n, g) for n, g, _ in ext if n != prov], args.epochs,
+                                      7 + 100 * args.seed, "without " + prov)
+            for n, g, _ in ext:
+                if n == prov:
+                    preds["{}_{}".format(n, g)] = S.predict(model, mu, sd, load_x(n, g)).astype(np.float16)
+            np.savez(pred_path, **preds)
+            print("{} held out, {} matches predicted".format(prov, len(preds)), flush=True)
+            continue
         k = int(fold)
         model, mu, sd = train_one([(n, g) for n, g, f in ext if f != k], args.epochs,
                                   k + 100 * args.seed, "fold %d" % k)
         for n, g, f in ext:
             if f == k:
-                x = S.drop_channels(np.load(os.path.join(S.OUT, "in_{}_{}.npy".format(n, g))))
-                preds["{}_{}".format(n, g)] = S.predict(model, mu, sd, x).astype(np.float16)
+                preds["{}_{}".format(n, g)] = S.predict(model, mu, sd, load_x(n, g)).astype(np.float16)
         np.savez(pred_path, **preds)
         print("fold {} done, {} matches predicted".format(k, len(preds)), flush=True)
 
