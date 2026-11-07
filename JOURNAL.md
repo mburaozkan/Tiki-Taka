@@ -2763,6 +2763,24 @@ the edge of plausible): waiting on the user's decision whether to submit it.
 
 ## Next steps
 
+**Next session (agreed 2026-11-07): turnover classifier for the short possessions.** Base:
+v31_d1_kt (working base; the submitted file is v31_kt). Candidate on top: v32_s1_kt (first stage
+retrained, +0.008 / +0.024 on held-out SkillCorner / PFF, public 0.787).
+1. Candidates: every touch-network peak >= 0.3 of the team not in possession (current network:
+   66-78% of short starts have such a peak).
+2. Target: does a new possession start there (external truth, SkillCorner + PFF, which count short
+   possessions). Inputs: where the ball goes / who touches it next and when, teammates near the
+   ball's path, ball speed and direction change, distances, previous and next 3 touches.
+3. XGBoost on the GPU, 4 fixed folds; its probability lowers the switch cost at that frame
+   (`learned.decode_hybrid(discount=...)`); grid of strength x threshold on the cached
+   intermediates (v31_d1 base first), then our match (public, full-match profile), then move it
+   onto v32_s1.
+4. Then short-spell proposals from touch pairs (other team, then the original team within ~2 s), and
+   a final decoder re-tune (switch cost x discount).
+Report catch rates < 2 s and 2-5 s every time. Estimate: 3-4 h to a first answer. Still open: s1w3
+(short-weighted first stage) eval, DFL leave one out for s1, the decision on v32_s1.
+Freeze around Nov 14; technical document from the journal; fresh-clone rebuild.
+
 **Next session (agreed 2026-11-02): more data for the short possessions (#10 / #12).** Missing
 #10 merges #9 and #11 into one A spell (#9 ends 12.3 s late, #11 scores 0); missing #12 hurts
 #11 from the other side. Catching #10 and #12 fixes #9-#12 together (~0.18 public spellF1).
