@@ -52,8 +52,10 @@ FOLDS = 4
 DEAD_TAG = "d1"
 INTER = os.path.join(ROOT, "data", "cache", "ext_v31")
 OUT = os.path.join(ROOT, "data", "cache", "turnover_cls")
-GRID = {"w": (0.0,), "p0": (0.2, 0.3, 0.4, 0.5), "half_s": (0.2,), "b": (8.0, 12.0, 20.0, 40.0),
-        "max_s": (5.0, 8.0)}
+ROWS = os.environ.get("TC_ROWS", "")   # --rows v2: rows with the interception inputs (rows_v2_*);
+V2 = ROWS == "v2"                      # via the environment so the worker processes see it
+GRID = {"w": (0.0,), "p0": (0.2, 0.3, 0.4), "half_s": (0.2,), "b": (8.0,), "max_s": (5.0,),
+        "tot": (0.0, 45.0), "end_p": (0.0, 0.3, 0.5)}
 CHOSEN = {"w": 0.0, "p0": 0.2, "half_s": 0.2, "b": 8.0, "max_s": 5.0}   # 2026-11-07, nested +0.009
 PAIRED = ("d", "c", "m", "g", "touch_p")
 SINGLE = ("ball_speed", "ball_seen", "gap_s", "player_speed", "ball_out", "keeper_hold")
@@ -68,6 +70,10 @@ def ext_list():
             g = os.path.basename(p)[:-4].split("_", 2)[2]
             out.append((name, g, rx.fold_of(name, g)))
     return out
+
+
+def rows_path(name, g):
+    return os.path.join(OUT, "rows_{}{}_{}.npz".format(ROWS + "_" if ROWS else "", name, g))
 
 
 def load_cache(name, g):
@@ -134,7 +140,7 @@ def attack_sign(d, period):
 
 def build_match(job):
     name, g, fold = job
-    path = os.path.join(OUT, "rows_{}_{}.npz".format(name, g))
+    path = rows_path(name, g)
     if os.path.isfile(path):
         return path
     import dfl_data as dd
@@ -153,6 +159,88 @@ def build_match(job):
     os.makedirs(OUT, exist_ok=True)
     np.savez(path, x=x, meta=meta, names=np.array(names), fold=fold)
     return path
+
+
+def _speed(ball, a, b, L, W):
+    """Mean ball speed (m/s) over frames [a, b)."""
+    n = len(ball)
+    a, b = max(a, 1), min(b, n)
+    if b - a < 1:
+        return np.nan
+    d = np.hypot(np.diff(ball[a - 1:b, 0]) * L, np.diff(ball[a - 1:b, 1]) * W)
+    return float(np.nanmean(d) * FPS) if np.any(~np.isnan(d)) else np.nan
+
+
+def intercept_inputs(i, side, ball, players, team, L, W, picks, pick_side, ball_z, features):
+    """Inputs for the interception / block pattern of short possessions (v2 rows)."""
+    n = len(ball)
+    x = {}
+
+    def cl(t):
+        return min(max(t, 0), n - 1)
+
+    def xy(t):
+        return np.array([ball[cl(t), 0] * L, ball[cl(t), 1] * W])
+
+    pre, post = _speed(ball, i - 10, i - 2, L, W), _speed(ball, i + 2, i + 10, L, W)
+    x["spd_pre"], x["spd_post"] = pre, post
+    x["spd_ratio"] = post / pre if pre and pre > 0.5 else np.nan
+    x["spd_post_long"] = _speed(ball, i + 10, i + 25, L, W)
+    for k in (3, 5, 12):
+        vi, vo = xy(i) - xy(i - k), xy(i + k) - xy(i)
+        nv = np.linalg.norm(vi) * np.linalg.norm(vo)
+        x["turn_cos_%d" % k] = float(np.dot(vi, vo) / nv) if nv > 1e-6 else np.nan
+    z0 = ball_z[cl(i)]
+    x["dz_pre"] = z0 - ball_z[cl(i - 8)]
+    x["dz_post"] = ball_z[cl(i + 8)] - z0
+    zz = ball_z[cl(i - 25):cl(i) + 1]
+    x["z_max_pre"] = float(np.nanmax(zz)) if np.any(~np.isnan(zz)) else np.nan
+    # the pass being cut: last picked touch of the other team before the peak
+    po = picks[(picks < i - 2) & (pick_side != side)]
+    pt = picks[(picks < i - 2) & (pick_side == side)]
+    if len(po):
+        x["o_rel_dt"] = (i - po[-1]) / FPS
+        x["o_rel_dist"] = float(np.hypot(*(xy(i) - xy(po[-1]))))
+        x["o_rel_spd"] = _speed(ball, po[-1] + 1, po[-1] + 8, L, W)
+    else:
+        x["o_rel_dt"] = x["o_rel_dist"] = x["o_rel_spd"] = np.nan
+    x["t_last_dt"] = (i - pt[-1]) / FPS if len(pt) else 30.0
+    # toucher and duel
+    tid_t = features.HOME if side == 0 else features.AWAY
+    tid_o = features.AWAY if side == 0 else features.HOME
+    b0 = xy(i)
+    pos0 = players[cl(i), :, :2] * [L, W]
+    posm = players[cl(i - 5), :, :2] * [L, W]
+    dist = np.hypot(*(pos0 - b0).T)
+    for tag, tid in (("t", tid_t), ("o", tid_o)):
+        sel = np.flatnonzero((team == tid) & ~np.isnan(dist))
+        if not len(sel):
+            for k in ("_tou_spd", "_tou_toward", "_n2", "_n10"):
+                x[tag + k] = np.nan
+            continue
+        x[tag + "_n2"] = float(np.sum(dist[sel] < 2.0))
+        x[tag + "_n10"] = float(np.sum(dist[sel] < 10.0))
+        j = sel[np.argmin(dist[sel])]
+        v = (pos0[j] - posm[j]) * (FPS / 5.0)
+        ok = not np.any(np.isnan(v))
+        x[tag + "_tou_spd"] = float(np.hypot(*v)) if ok else np.nan
+        to_ball = b0 - posm[j]
+        nb = np.linalg.norm(to_ball)
+        x[tag + "_tou_toward"] = float(np.dot(v, to_ball) / nb) if ok and nb > 1e-6 else np.nan
+    # where the ball next stops (slowest point in the next 2 s) and who is near it
+    seg = [(_speed(ball, t - 2, t + 3, L, W), t) for t in range(i + 5, min(i + 50, n - 3), 3)]
+    seg = [s_ for s_ in seg if not np.isnan(s_[0])]
+    if seg:
+        sp_, ts = min(seg)
+        bs = xy(ts)
+        x["stop_dt"], x["stop_spd"] = (ts - i) / FPS, sp_
+        ds = np.hypot(*(players[ts, :, :2] * [L, W] - bs).T)
+        for tag, tid in (("t", tid_t), ("o", tid_o)):
+            dd_ = ds[(team == tid) & ~np.isnan(ds)]
+            x["stop_min_" + tag] = float(dd_.min()) if len(dd_) else np.nan
+    else:
+        x["stop_dt"] = x["stop_spd"] = x["stop_min_t"] = x["stop_min_o"] = np.nan
+    return x
 
 
 def match_rows(c, f, base, pdead, d, ball, pitch, cols, lab=None):
@@ -267,6 +355,9 @@ def match_rows(c, f, base, pdead, d, ball, pitch, cols, lab=None):
                     x["near_%s_%s" % (tag, o)] = float(np.sum(dt_ < NEAR_M))
                     x["min_%s_%s" % (tag, o)] = float(dt_.min()) if len(dt_) else np.nan
             x["o_spell_s"] = (i - spell_start[j]) / FPS
+            if V2:
+                x.update(intercept_inputs(i, side, ball, players, team, L, W, picks, pick_side,
+                                          c["ball_z"], features))
             x["dead_p"] = pdead[i]
             if names is None:
                 names = list(x)
@@ -328,7 +419,7 @@ def build_cmd(args):
 def load_rows():
     data = []
     for name, g, fold in ext_list():
-        with np.load(os.path.join(OUT, "rows_{}_{}.npz".format(name, g))) as z:
+        with np.load(rows_path(name, g)) as z:
             if len(z["meta"]):
                 data.append((name, g, fold, z["x"], z["meta"], list(z["names"])))
     return data
@@ -347,14 +438,27 @@ def average_precision_score(y, p):
     return float(np.sum(prec * ys) / max(ys.sum(), 1))
 
 
-def train_xgb(x, y, seed=0, rounds=600):
+def train_xgb(x, y, seed=0, rounds=600, w=None):
     import xgboost as xgb
-    pos = max(y.mean(), 1e-3)
-    dm = xgb.DMatrix(x, label=y)
+    dm = xgb.DMatrix(x, label=y, weight=w)
     params = {"objective": "binary:logistic", "eval_metric": "logloss", "device": "cuda",
               "tree_method": "hist", "max_depth": 6, "eta": 0.05, "subsample": 0.8,
               "colsample_bytree": 0.7, "min_child_weight": 5, "seed": seed}
     return xgb.train(params, dm, rounds)
+
+
+def weights(meta, sw):
+    """Positives < 2 s weight sw, 2-5 s (1 + sw) / 2, the rest 1."""
+    if sw == 1:
+        return None
+    ln = meta[:, 3]
+    pos = meta[:, 2] == 1
+    return np.where(pos & (ln < 2), sw, np.where(pos & (ln < 5), (1 + sw) / 2.0, 1.0))
+
+
+def auc_vs_neg(yy, pp, sel):
+    neg = yy == 0
+    return roc_auc_score(np.r_[np.ones(sel.sum()), np.zeros(neg.sum())], np.r_[pp[sel], pp[neg]])
 
 
 def train_cmd(args):
@@ -365,7 +469,7 @@ def train_cmd(args):
         tr_ = [d for d in data if d[2] != k]
         x = np.concatenate([d[3] for d in tr_])
         y = np.concatenate([d[4][:, 2] for d in tr_])
-        bst = train_xgb(x, y)
+        bst = train_xgb(x, y, w=weights(np.concatenate([d[4] for d in tr_]), args.short_weight))
         for d in data:
             if d[2] == k:
                 out["{}_{}".format(d[0], d[1])] = bst.predict(xgb.DMatrix(d[3]))
@@ -373,7 +477,7 @@ def train_cmd(args):
     x = np.concatenate([d[3] for d in data])
     y = np.concatenate([d[4][:, 2] for d in data])
     os.makedirs(os.path.join(OUT, "models"), exist_ok=True)
-    bst = train_xgb(x, y)
+    bst = train_xgb(x, y, w=weights(np.concatenate([d[4] for d in data]), args.short_weight))
     bst.save_model(os.path.join(OUT, "models", "{}_all.json".format(args.tag)))
     np.savez(os.path.join(OUT, "pred_{}.npz".format(args.tag)), **out)
     # held-out quality
@@ -388,6 +492,10 @@ def train_cmd(args):
         print("  p >= {:.1f}: precision {:.2f}, recall {:.2f} (short < 2 s starts {:.2f}, 2-5 s {:.2f})"
               .format(thr, yy[sel].mean() if sel.any() else np.nan, sel[yy == 1].mean(),
                       sel[(yy == 1) & (ln < 2)].mean(), sel[(yy == 1) & (ln >= 2) & (ln < 5)].mean()))
+    pos = yy == 1
+    print("  AUC vs negatives: short < 2 s {:.3f}, 2-5 s {:.3f}, >= 5 s {:.3f}".format(
+        auc_vs_neg(yy, pp, pos & (ln < 2)), auc_vs_neg(yy, pp, pos & (ln >= 2) & (ln < 5)),
+        auc_vs_neg(yy, pp, pos & (ln >= 5))))
     imp = bst.get_score(importance_type="gain")
     names = data[0][5]
     top = sorted(imp.items(), key=lambda kv: -kv[1])[:15]
@@ -407,20 +515,35 @@ def discount(n, meta, p, w, p0, half_s, switch):
     return out
 
 
-def span_boost(n, meta, p, f, b, p0, max_s):
+def span_boost(n, meta, p, f, b, p0, max_s, tot=0.0, end_p=0.0):
     """(n,) home log-odds: +/- b x clip((p - p0) / (1 - p0)) toward T from the peak to the next
-    picked touch of the other team (at most max_s)."""
+    picked touch of the other team (at most max_s). tot > 0: every proposal (p >= p0) gets at
+    least tot in total over its span (enough to pay both switches). end_p > 0: the span also ends
+    at the other team's first touch-P peak >= end_p."""
     out = np.zeros(n)
     tch = np.asarray(f["touch"])
     picks = np.flatnonzero(tch != 0)
     side = np.where(tch[picks] > 0, H, A)
+    tp = (np.asarray(f["touch_p_home"]), np.asarray(f["touch_p_away"]))
     v = b * np.clip((p - p0) / (1.0 - p0), 0, 1)
     k = int(round(max_s * FPS))
-    for (i, T), vi in zip(meta[:, :2].astype(int), v):
-        if vi <= 0:
+    for (i, T), vi, pi in zip(meta[:, :2].astype(int), v, p):
+        if pi < p0 or (vi <= 0 and tot <= 0):
             continue
         nxt = picks[(picks > i + 2) & (side != T)]
         e = min(int(nxt[0]) if len(nxt) else n, i + k, n)
+        if end_p > 0:
+            po = tp[1 if T == H else 0]
+            hit = np.flatnonzero(po[i + 3:e] >= end_p)
+            if len(hit):
+                j = i + 3 + int(hit[0])
+                while j + 1 < e and po[j + 1] >= po[j]:
+                    j += 1
+                e = j
+        if e <= i:
+            continue
+        if tot > 0:
+            vi = max(vi, tot / float(e - i))
         sgn = 1.0 if T == H else -1.0
         seg = out[i:e]
         out[i:e] = np.where(np.abs(seg) < vi, sgn * vi, seg)
@@ -437,7 +560,7 @@ def eval_match(job):
     with np.load(os.path.join(ROOT, "data", "cache", "ext_heads_{}.npz".format(DEAD_TAG))) as z:
         pdead = th.seeds_mean({k: z[k] for k in z.files if k.startswith(name + "_" + g + "__")},
                               name + "_" + g)
-    with np.load(os.path.join(OUT, "rows_{}_{}.npz".format(name, g))) as z:
+    with np.load(rows_path(name, g)) as z:
         meta = z["meta"]
     with np.load(os.path.join(OUT, "pred_{}.npz".format(tag))) as z:
         key = "{}_{}".format(name, g)
@@ -449,7 +572,8 @@ def eval_match(job):
     res = [(tr.score(lab, base), length_caught(lab, base))]
     for s in settings:
         disc = discount(n, meta, p, s["w"], s["p0"], s["half_s"], tr.SWITCH)             if len(p) and s["w"] > 0 else None
-        bst = span_boost(n, meta, p, f, s["b"], s["p0"], s["max_s"]) if len(p) else None
+        bst = span_boost(n, meta, p, f, s["b"], s["p0"], s["max_s"], s.get("tot", 0.0),
+                         s.get("end_p", 0.0)) if len(p) else None
         codes = base_chain(c, f, blk, pdead, disc, bst)
         res.append((tr.score(lab, codes), length_caught(lab, codes)))
     return name, g, res
@@ -545,9 +669,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=("build", "train", "eval", "ours"))
     ap.add_argument("--name")
+    ap.add_argument("--rows", default="", help="v2: rows with the interception inputs")
+    ap.add_argument("--short-weight", type=float, default=1.0)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--tag", default="t1")
     args = ap.parse_args()
+    global ROWS, V2
+    ROWS, V2 = args.rows, args.rows == "v2"
+    os.environ["TC_ROWS"] = ROWS
     {"build": build_cmd, "train": train_cmd, "eval": eval_cmd, "ours": ours_cmd}[args.cmd](args)
 
 

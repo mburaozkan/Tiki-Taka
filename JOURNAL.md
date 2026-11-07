@@ -2738,6 +2738,49 @@ byte for byte. 468 candidates, 54 proposals (12%; external matches 20%), 0.17% o
   spells and nothing breaks. **v31_d1_to_kt.csv** written (valid): passes the rule (broadcast sets
   clearly up, public within 0.04); candidate on top of the base, decision open.
 
+### 2026-11-07: how short starts look, interception inputs, short-weighted training (`tools/short_profile.py`, `tools/short_proposals.py`)
+
+**Where the 2,366 short (< 2 s) starts after a team change go** (84 matches): candidate 34%, base
+already had T 25% (mostly the other team's spell before was missed: the back-and-forth case),
+base in D 19% (around restarts), touch P of T < 0.1 13%, 0.1-0.3 8%. 2-5 s: 37 / 32 / 13 / 16%.
+
+**What tells them apart** (univariate AUC, short starts vs negatives / vs long starts):
+- Long starts are recognised by what follows: first stage, refiner and vote flip to T 1-3 s later
+  (AUC long vs neg 0.85-0.86). A short start looks like a negative there by definition (short vs
+  long 0.09); held-out P median: short 0.16, 2-5 s 0.31, long 0.48, negatives 0.02.
+- At the touch itself, short starts look like **an interception / block of a moving pass**: the ball
+  goes toward T's attack in the next second (median +2.3 m vs -2.5 m for negatives, AUC 0.72), it
+  arrives faster (7.4 vs 5.4 m/s, 0.62), slows sharply (0.3 s travel 1.4 vs 2.4 m, 0.30), turns
+  (cos 0.83 vs 0.98, 0.28), and the other team had less touch P just before (0.13 vs 0.44, 0.38;
+  negatives are mostly duels and the other team receiving).
+
+**v2 inputs** (+26): ball speed before / after and ratio, direction change at 3 scales, height
+change, the pass being cut (time, distance and speed since the other team's last pick), the
+toucher's speed and run toward the ball, players of each team within 2 / 10 m, where the ball next
+stops and who is nearest. **Short-weighted training**: positives < 2 s weight w, 2-5 s (1 + w) / 2.
+
+| model | AUC short / 2-5 / long vs neg | short recall at p >= 0.5 | nested | caught < 2 s / 2-5 s |
+|---|---|---|---|---|
+| t1 | 0.791 / 0.867 / 0.911 | 0.22 | +0.0088-0.0090 | 7.0% / 30.1% |
+| t2 (v2 inputs) | 0.796 / 0.870 / 0.912 | 0.23 | +0.0079 | 6.8% / 30.2% |
+| t2, w 3 | 0.804 / 0.874 / 0.905 | 0.29 | +0.0090 (70/14) | 7.2% / 30.1% |
+| t2, w 6 | 0.809 / 0.875 / 0.899 | 0.34 | +0.0086 | 7.9% / 31.0% |
+
+- The new inputs and the weighting move short starts up a little (AUC +0.018, recall +0.12) and
+  catch more of them, but spellF1 stays at +0.009: the extra catches come with false proposals.
+- **Fate of the proposals at true short starts** (t2 w 6, p >= 0.2; 57% of all proposals are false,
+  26% are long starts): caught 31%, no predicted T spell at all 38% (decoder 133, hand D 53,
+  backdating 17), predicted spell too long 27% (the other team's next pick comes ~2.5 s late),
+  too short 4%.
+- Two decoder fixes for those, both no gain: a minimum total boost of 45 per proposal (low-P
+  proposals were only ~1 per frame, too little for two switches), and ending the span at the other
+  team's first touch peak >= 0.3 / 0.5. Best of 24 settings = the plain proposal (+0.0090).
+- **Conclusion: the classifier is the limit, not the decoder.** At AUC ~0.80 on short starts, every
+  way of catching more of them costs as much in false spells. t1 stays the candidate
+  (v31_d1_to_kt); the v2 inputs and weighting are kept in the tool but not adopted.
+- Further gains need new evidence for the short starts (the back-and-forth case where the base
+  already has T is a quarter of them and isn't even a candidate), or a different target.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
