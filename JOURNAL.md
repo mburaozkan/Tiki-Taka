@@ -3059,6 +3059,42 @@ matches (SkillCorner 0.6421, PFF 0.6370). 23,417 true possessions, 23,316 predic
   change by type plus the frame class), judged first on this change recall / precision, then decoded
   into possessions and scored on spellF1.
 
+### 2026-11-07: dense change network (`tools/change_net.py`)
+
+Same model and inputs as the short net (`data/cache/short_net/in_*`), trained on all possessions.
+Targets per frame: turnover to H / to A, stoppage, restart to H / to A (Gaussian, sigma 2 frames),
+plus the frame class. 4 fixed folds, about 4 min per fold.
+
+**Decoded on its own** (Viterbi: w x log P(class), log of the change heads as transition costs), vs
+the best candidate e3k:
+
+| setting | SkillCorner | PFF | up/down | caught < 2 s / 2-5 s | precision |
+|---|---|---|---|---|---|
+| candidate e3k | 0.6421 | 0.6370 | | 22.4% / 56.8% | 65.3% |
+| change net, w 0.5 bias -3 | 0.7224 | 0.7421 | 84/0 | 25.8% / 54.2% | 81.8% |
+| change net, w 1 bias -1.5 | 0.7181 | 0.7462 | 84/0 | 30.2% / 57.4% | 79.9% |
+| change net, D fixed to e3k's | 0.6715 | 0.6900 | 82/2 | 23.2% / 53.6% | 74.1% |
+
+Nested 4-fold: **+0.0775 / +0.1087** (84/0) decoded alone. With D fixed to e3k's: +0.0291 / +0.0529
+(82/2), so about 40% of the gain is in the team changes and the rest is at the dead-ball edges, which
+partly follow the external sets' wider D. Changes found within 0.5 / 1 s: turnovers 39/49% -> 48/56%
+(precision 39/49% -> 57/67%), stoppages 31/47% -> 52/69%, restarts 28/42% -> 52/65%.
+
+**On our match it doesn't transfer.** Public 0.443 / 0.785 decoded alone, 0.457 / 0.895 with v31_d1's D
+fixed (base 0.800 / 0.939). The change heads are weak here (median peak 0.34 within 0.5 s of a public
+true change): #1 -> #2 switches 4.9 s early, #7 is missed, and #6 runs into #8.
+
+**Hybrid: v31_d1 stays and the net only edits it** (`change_net.py hyb`; on our match `ours --hyb`):
+- The turnover heads as a switch-cost discount: nothing (PFF 17/33 down).
+- The class head as a team boost b x log(P(H) / P(A)) helps: b 1.0 SkillCorner 0.6601, PFF 0.6724
+  (83/1); nested **+0.0180 / +0.0355** (83/1).
+- On our match (boost on v31_d1, without the short-net paste): public **0.745 / 0.928** at b 1.0
+  (base 0.800 / 0.939), 0.662 at b 0.5, 0.676 at b 1.5. The drop is #15 (the short H spell, now missed)
+  and the #1 / #2 edge moving 1.7 s. Beyond the rule (-0.04): not adopted.
+- So the external gain is large and consistent, but the network reads our match differently, as the
+  short net did (2.8% vs 4.5% flagged). Next: find which inputs shift (idea 3: a classifier, ours vs
+  external windows), then retrain without them or with domain adaptation.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

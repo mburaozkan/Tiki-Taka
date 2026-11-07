@@ -49,7 +49,7 @@ def bin_of(n):
     return len(BINS) - 1
 
 
-def candidate(job):
+def candidate(job, disc=None, boost=None):
     name, g, net, gen, tag, thr = job
     import run_v31_external as rx
     import pair_cls as P
@@ -65,7 +65,7 @@ def candidate(job):
     blk = rx.blocks(c["period"])
     lab = c["labels"]
     n = len(lab)
-    base = T.base_chain(c, f, blk, pdead)
+    base = T.base_chain(c, f, blk, pdead, disc, boost)
     out = base.copy()
     for i in np.argsort(p):
         if p[i] < thr:
