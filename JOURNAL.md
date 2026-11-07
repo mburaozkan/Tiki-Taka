@@ -3155,6 +3155,32 @@ predictions): mean **0.6034**. Every SkillCorner / PFF model here has never seen
   on SkillCorner + PFF alone (since 2026-11-06) overstates their value.
 - Next: DFL into training (c1dl, DFL sampled x5, DFL held out by fold), and leave one provider out.
 
+### 2026-11-08: which inputs carry the provider habits, and DFL in training
+
+Variants of the change net (decoded alone, w 0.5-1, bias -3; SkillCorner / PFF nested vs e3k; DFL
+held out; public on our match):
+
+| variant | SC / PFF nested | DFL (base 0.6034) | public alone / base D fixed / best mix |
+|---|---|---|---|
+| c1: all inputs, SC + PFF | +0.078 / +0.109 (84/0) | 0.6065 (5/2) | 0.443 / 0.457 / 0.600 (alpha 0.3) |
+| c1raw: no first-stage / refiner / vote inputs | +0.077 / +0.106 (84/0) | 0.5957 (4/3) | 0.440 / 0.507 |
+| c1ch: chain evidence only (no raw geometry) | +0.026 / +0.022 (59/25) | 0.6125 (4/3); mix 0.3 **0.6248 (7/0)** | 0.593 / 0.637 / 0.657 (alpha 0.3) |
+| **c1dl: all inputs, SC + PFF + DFL (x5)** | **+0.056 / +0.096 (84/0)** | **0.6514 (7/0)** | **0.637 / 0.667 / 0.686** (alpha 0.3, D fixed) |
+
+- **The provider-specific gain lives in the raw geometry:** without it (c1ch) SkillCorner / PFF
+  drop to +0.02, but DFL and public go up; raw geometry alone (c1raw) keeps all of the
+  SkillCorner / PFF gain and none on DFL / public.
+- **Adding DFL to training lifts every set:** DFL +0.048 held out (7/0; stoppages found within 1 s
+  47% -> 82%, restarts 32% -> 71%), SkillCorner / PFF still +0.056 / +0.096, public 0.44 -> 0.64.
+  On public live frames its team is right 95% (base 96%, c1 90%).
+- **What still costs public with c1dl:** #1-#5 are better than the base (IoU 1.00 / 1.00 / 0.84 /
+  0.97 / 0.87), but #7 (3.2 s) is missed (turnover head 0.24, P(A) 0.04), so #6 runs into #8
+  (three possessions); it calls the 5.5 s stoppage at #5 live (as the user judged it by eye); true D
+  called D 51%. Mixing with the base (alpha 0.7) gives the base back exactly (0.800).
+- With alpha 0.5 c1ch keeps public at 0.800 but SkillCorner / PFF fall to 0.624 / 0.580 (below e3k):
+  the see-saw is softer, still there.
+- Running: c1chdl (chain evidence only + DFL).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
