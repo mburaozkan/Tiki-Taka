@@ -3278,6 +3278,36 @@ At each true turnover (+-0.2 s distances, +-0.5 s net peak):
 - Next: give the net a ball in the gaps (first interpolated between the gap's ends, with the
   ball-relative inputs recomputed from it; then a learned ball-from-players estimate).
 
+**Same breakdown on SkillCorner / PFF (c1dl held out, 0.698 / 0.729; turnovers within 1 s 55% /
+50%):** share of the missed turnovers, SC / PFF / DFL: duel 40% / 36% / 48%, "other" (new team at
+the ball, old team 2.5-4 m) 39% / 30% / 16%, loose 6% / 18% / 2%, pass cut 13% / 13% / 6%, ball
+unseen 3% / 3% / 29%. **Contested balls (duel + other) are two thirds or more of the misses on every
+set**; gaps matter only on DFL (our gap pattern). 58-70% of the missed turnovers have a net peak
+>= 0.3: the net fires but cannot tell a ball-winning duel from one that isn't.
+
+### 2026-11-08: a ball in the gaps (user's idea; `tools/ball_fill.py`, `tools/ball_net.py`)
+
+DFL with our gap pattern: 38% of frames are in gaps, 81% of those in gaps of 10 s or more, 30% of
+them live. Fillers, scored against DFL's true ball in the test-seed gaps:
+- linear: straight line between the gap's ends;
+- carrier (user's rule): the player nearest the ball when it disappears keeps it, 0.5 m in front;
+  if another player has it when it reappears, it leaves the first at the earliest of an opponent
+  within 1.5 m, a stop / sharp turn, or the last moment a 15 m/s pass still arrives;
+- ball net (user's idea, learned): per gap frame, 22 player tokens (position, velocity, last / next
+  1 s, distances to both gap ends, carrier at each end) + a free-ball token on the straight line; a
+  small transformer weights the tokens; trained on DFL only, gaps cut with other seeds, one model
+  per held-out match (self-supervised: no labels, the true ball is the target).
+
+| filler | median error | within 5 m | nearest team right | live frames: median / team right |
+|---|---|---|---|---|
+| linear | 9.3 m | 29% | 62.0% | 8.3 m / 62.3% |
+| carrier | 9.1 m | 32% | 63.6% | 8.1 m / 65.4% |
+| **ball net** | **7.0 m** | **37%** | 61.9% | **4.4 m / 66.4%** |
+
+- The ball net halves the error on live gap frames (8.3 -> 4.4 m); the team at the ball improves
+  little (62 -> 66%). Running: the change net retrained with the ball-relative inputs rebuilt from
+  the ball net in the gaps (c1dlb, `tools/cn_ballfill.py`, `CN_X=xb`).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

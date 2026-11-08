@@ -120,6 +120,7 @@ def main():
     ap.add_argument("--tag", default="c1dl")
     ap.add_argument("--w", type=float, default=1.0)
     ap.add_argument("--bias", type=float, default=-3.0)
+    ap.add_argument("--set", default="dfl", choices=("dfl", "skillcorner", "pff"))
     args = ap.parse_args()
     import eval_touch_run as tr
     import cn_dfl
@@ -127,15 +128,27 @@ def main():
     ci = names.index("seen")
     col = {k: names.index(k) for k in names}
     R, TR, sc, orc = [], [], [], []
-    for g in dd.GAMES:
-        with np.load(cn_dfl.path(g)) as z:
-            lab, blk, X = z["lab"], [tuple(b) for b in z["blk"]], z["x"].astype(np.float32)
-            seen = X[:, ci]
-        pr = cn_dfl.heldout(args.tag, g)
-        held = pr is not None
-        if not held:
+    if args.set == "dfl":
+        games = list(dd.GAMES)
+    else:
+        import turnover_cls as T
+        games = [g for n, g, _ in T.ext_list() if n == args.set]
+        with np.load(os.path.join(C.OUT, "pred_{}.npz".format(args.tag))) as z:
+            preds = {k: z[k] for k in z.files if k.startswith(args.set + "_")}
+    for g in games:
+        if args.set == "dfl":
             with np.load(cn_dfl.path(g)) as z:
-                pr = cn_dfl.predict_tag(args.tag, z["x"])
+                lab, blk, X = z["lab"], [tuple(b) for b in z["blk"]], z["x"].astype(np.float32)
+            pr = cn_dfl.heldout(args.tag, g)
+        else:
+            import run_v31_external as rx
+            c, _ = T.load_cache(args.set, g)
+            lab = c["labels"]
+            blk = rx.blocks(c["period"])
+            X = np.load(os.path.join(S.OUT, "in_{}_{}.npy".format(args.set, g))).astype(np.float32)
+            pr = preds["{}_{}".format(args.set, g)].astype(np.float32)
+        seen = X[:, ci]
+        held = pr is not None
         out = C.viterbi(pr, blk, args.w, args.bias)
         runs = pm.valid_runs(lab)
         filled = pm.fill_abstentions(out, runs)
@@ -163,8 +176,8 @@ def main():
         R += why_rows(lab, filled, truth, pred, flags)
         TR += turnover_rows(lab, filled, runs, seen, truth, X, col, pr)
     R, TR, orc = np.array(R, float), np.array(TR, float), np.array(orc).mean(axis=0)
-    print("{} on DFL ({}held out), w {:g} bias {:g}: spellF1 {:.4f}".format(
-        args.tag, "" if held else "NOT ", args.w, args.bias, np.mean(sc)))
+    print("{} on {} ({}held out), w {:g} bias {:g}: spellF1 {:.4f}".format(
+        args.tag, args.set, "" if held else "NOT ", args.w, args.bias, np.mean(sc)))
 
     print("\n1. true possessions by length (caught = mean over IoU 0.3-0.7)")
     print("{:<9} {:>6} {:>7} {:>8} {:>8}".format("length", "n", "share", "caught", "oracle"))

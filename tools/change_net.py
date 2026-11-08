@@ -67,7 +67,12 @@ def targets_from_cls(cls):
 DFL_W = float(os.environ.get("CN_DFL", "0"))     # > 0: DFL's 7 matches join training, sampled x this
 
 
+X_DIR = os.environ.get("CN_X", "")             # e.g. xb: inputs with a ball in the gaps (cn_ballfill.py)
+
+
 def load_x(name, g):
+    if X_DIR:
+        return S.drop_channels(np.load(os.path.join(OUT, X_DIR, "{}_{}.npy".format(name, g))))
     if name == "dfl":
         with np.load(os.path.join(OUT, "dfl_{}.npz".format(g))) as z:
             return S.drop_channels(z["x"])
