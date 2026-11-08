@@ -325,7 +325,8 @@ def main():
     ax.set_ylabel("reaction")
     ax.legend(loc="upper right", fontsize=7, ncol=2)
     if args.yolo:
-        yb = np.load(os.path.join(dd.DATA_DIR, "cache", "yolo", "ball_clean_bambezius.npy"))
+        yr = os.path.join(dd.DATA_DIR, "cache", "yolo", "ball_refined_bambezius.npy")
+        yb = np.load(yr if os.path.isfile(yr) else os.path.join(dd.DATA_DIR, "cache", "yolo", "ball_clean_bambezius.npy"))
         ys, ydv = ball_track(yb)
         ax = axes[6]
         ax.plot(t, np.minimum(ys[a:b], 30), color="#6b46c1", lw=1, label="YOLO ball speed")
@@ -336,7 +337,8 @@ def main():
         ax.set_ylim(0, 30)
         ax.set_ylabel("YOLO ball")
         ax.legend(loc="upper left", fontsize=7, ncol=4)
-        yx = np.load(os.path.join(dd.DATA_DIR, "cache", "yolo", "v31_yolo_extras.npz"))
+        yp = os.path.join(dd.DATA_DIR, "cache", "yolo", "v31_yolo_touch_extras.npz")
+        yx = np.load(yp if os.path.isfile(yp) else os.path.join(dd.DATA_DIR, "cache", "yolo", "v31_yolo_extras.npz"))
         ax = axes[7]
         ax.plot(t, yx["touch_p_home"][a:b], color=COLORS[pm.H], lw=1.2, label="P(home touch) YOLO ball")
         ax.plot(t, yx["touch_p_away"][a:b], color=COLORS[pm.A], lw=1.2, label="P(away touch) YOLO ball")

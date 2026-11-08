@@ -282,7 +282,10 @@ def clean_cmd(args):
             i -= run[i]
         else:
             i -= 1
-    use = (consistent & near_trk) | (consistent & longrun & ~np.isfinite(tm[:, 0]))
+    mode = os.environ.get("YB_MODE", "both")       # both / fill (gaps only) / replace (no gap filling)
+    use_rep = consistent & near_trk
+    use_fill = consistent & longrun & ~np.isfinite(tm[:, 0])
+    use = {"both": use_rep | use_fill, "fill": use_fill, "replace": use_rep}[mode]
     out = tm.copy()
     out[use] = ym[use]
     sm = out.copy()                                    # light smoothing on finite stretches
@@ -290,8 +293,9 @@ def clean_cmd(args):
     edges = np.flatnonzero(np.diff(np.concatenate([[0], fin.astype(np.int8), [0]])))
     for s0, s1 in zip(edges[::2], edges[1::2]):
         if s1 - s0 >= 5:
-            sm[s0:s1] = gaussian_filter1d(out[s0:s1], 1.5, axis=0, mode="nearest")
-    np.save(os.path.join(OUT, "ball_clean_{}.npy".format(args.model)), (sm / np.array([L, W])).astype(np.float32))
+            sm[s0:s1] = gaussian_filter1d(out[s0:s1], float(os.environ.get("YB_SIGMA", "1.5")), axis=0, mode="nearest")
+    tag = os.environ.get("YB_TAG", "")
+    np.save(os.path.join(OUT, "ball_clean_{}{}.npy".format(args.model, tag)), (sm / np.array([L, W])).astype(np.float32))
     spd = np.hypot(*np.gradient(sm, axis=0).T) * FPS
     spd_t = np.hypot(*np.gradient(tm, axis=0).T) * FPS
     print("frames {}: YOLO detection {:.0%}, consistent {:.0%}; ball from YOLO {:.0%} (replacing tracking {:.0%}, "
@@ -303,16 +307,73 @@ def clean_cmd(args):
         np.nanmean(spd_t > 30), np.nanmean(spd > 30)))
 
 
+def refine_cmd(args):
+    """tracking ball + a smoothed YOLO correction, only where both exist and agree; gaps untouched.
+    -> ball_refined_<model>.npy (normalised x, y; NaN exactly where the tracking ball is NaN)."""
+    from load_homography import load as load_h
+    from atd_cache import load_arrays
+    from games import GAMES, GAME
+    from scipy.ndimage import median_filter, gaussian_filter1d
+    z = np.load(os.path.join(OUT, "public_{}.npz".format(args.model)))
+    a0 = int(z["a"])
+    trk = load_arrays("tactical", raw=True)["ball"][:, :2].astype(np.float64)
+    n = len(trk)
+    det = np.full((n, 3), np.nan)
+    m = min(n - a0, len(z["det"]))
+    det[a0:a0 + m] = z["det"][:m]
+    Hm, _, valid = load_h()
+    Hm = Hm[:n].astype(np.float64)
+    okh = (valid[:n] > 0) & np.isfinite(det[:, 0])
+    Hi = np.full_like(Hm, np.nan)
+    Hi[okh] = np.linalg.inv(Hm[okh])
+    v = np.einsum("nij,nj->ni", Hi, np.column_stack([det[:, 0], det[:, 1], np.ones(n)]))
+    L, W = GAMES[GAME]["pitch"]
+    ym = v[:, :2] / v[:, 2:3] * np.array([L, W])
+    ym[~okh] = np.nan
+    tm = trk * np.array([L, W])
+    seen = np.isfinite(tm[:, 0])
+    med = np.column_stack([median_filter(np.nan_to_num(ym[:, k], nan=1e4), size=7, mode="nearest") for k in (0, 1)])
+    r = ym - tm                                         # YOLO's correction to the tracking ball
+    step = np.full(n, np.inf)
+    step[1:] = np.hypot(*(ym[1:] - ym[:-1]).T) * FPS    # implied speed between consecutive frames
+    use = (seen & np.isfinite(ym[:, 0]) & (np.hypot(*r.T) <= args.radius)
+           & (np.hypot(*(ym - med).T) <= 1.5) & (det[:, 2] >= 0.1) & (np.minimum(step, np.roll(step, -1)) <= 35))
+    rr = np.where(use[:, None], r, np.nan)
+    out = tm.copy()
+    edges = np.flatnonzero(np.diff(np.concatenate([[0], seen.astype(np.int8), [0]])))
+    for s0, s1 in zip(edges[::2], edges[1::2]):          # per seen stretch: fill short holes, smooth
+        seg = rr[s0:s1]
+        ok = np.isfinite(seg[:, 0])
+        if ok.sum() < 3:
+            continue
+        idx = np.arange(s1 - s0)
+        filled = np.column_stack([np.interp(idx, idx[ok], seg[ok, k]) for k in (0, 1)])
+        far = np.ones(len(idx), bool)                   # frames more than 5 from a used one: no correction
+        for k in np.flatnonzero(ok):
+            far[max(k - 5, 0):k + 6] = False
+        filled[far] = 0.0
+        out[s0:s1] = tm[s0:s1] + gaussian_filter1d(filled, args.sigma, axis=0, mode="nearest")
+    np.save(os.path.join(OUT, "ball_refined_{}.npy".format(args.model)), (out / np.array([L, W])).astype(np.float32))
+    sp_t = np.hypot(*np.gradient(tm, axis=0).T) * FPS
+    sp_o = np.hypot(*np.gradient(out, axis=0).T) * FPS
+    print("tracking ball seen {:.0%}; YOLO correction used on {:.0%} of seen frames (median size {:.2f} m); "
+          "unseen frames unchanged: {}".format(seen.mean(), use[seen].mean(), np.nanmedian(np.hypot(*r[use].T)),
+                                               bool(np.all(np.isnan(out[~seen, 0])))))
+    print("speed > 30 m/s: tracking {:.2%}, refined {:.2%}".format(np.nanmean(sp_t > 30), np.nanmean(sp_o > 30)))
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("probe", "run", "render", "clean"))
+    ap.add_argument("cmd", choices=("probe", "run", "render", "clean", "refine"))
     ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--model", default="bambezius")
     ap.add_argument("--imgsz", type=int, default=1920)
     ap.add_argument("--conf", type=float, default=0.05)
+    ap.add_argument("--radius", type=float, default=3.0, help="refine: max YOLO-tracking distance (m)")
+    ap.add_argument("--sigma", type=float, default=1.0, help="refine: smoothing of the correction (frames)")
     ap.add_argument("--near", type=int, default=1, help="1: prefer the ball box nearest the tracking ball")
     args = ap.parse_args()
-    {"probe": probe_cmd, "run": run_cmd, "render": render_cmd, "clean": clean_cmd}[args.cmd](args)
+    {"probe": probe_cmd, "run": run_cmd, "render": render_cmd, "clean": clean_cmd, "refine": refine_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":

@@ -64,11 +64,48 @@ def short_changes(lab, max_s=None):
     return f[keep], t[keep]
 
 
+YOLO = False           # --yolo: the ball made to look like our YOLO-refined ball (tools/yolo_ball.py refine)
+YOLO_SLOW = (0.64, 0.96)      # m, sd of YOLO's slow correction on our match (x, y)
+YOLO_FAST = (0.14, 0.21)      # m, sd of its fast jitter (lag-1 autocorrelation 0.84 ~ smoothed sigma 1)
+YOLO_SHARE = 0.46             # share of seen frames YOLO corrects on our match
+
+
+def yolo_like(d, seed):
+    """our tracking-like ball, and in random stretches (~YOLO_SHARE of frames) the sharp ball +
+    YOLO-like slow offset and fast jitter; same gaps."""
+    from scipy.ndimage import gaussian_filter1d
+    rng = np.random.default_rng(1000 + seed)
+    blur = dd.prepare_ball(d, seed)
+    sharp = dd.prepare_ball(d, seed, blur=False)
+    n = len(blur)
+    L, W = dd.PITCH
+    noise = np.zeros((n, 2))
+    for k, (slow, fast) in enumerate(zip(YOLO_SLOW, YOLO_FAST)):
+        s_ = gaussian_filter1d(rng.standard_normal(n), 5.0)
+        f_ = gaussian_filter1d(rng.standard_normal(n), 1.0)
+        noise[:, k] = s_ / s_.std() * slow + f_ / f_.std() * fast
+    noise /= np.array([L, W])
+    sm = sharp.copy()
+    ok = np.isfinite(sharp[:, 0])
+    sm[ok, :2] = gaussian_filter1d(np.nan_to_num(sharp[:, :2]), 1.0, axis=0)[ok]
+    mask = np.zeros(n, bool)                 # stretches of 1-6 s, alternating
+    t = 0
+    while t < n:
+        ln = int(rng.integers(25, 150))
+        if rng.random() < YOLO_SHARE:
+            mask[t:t + ln] = True
+        t += ln
+    out = blur.copy()
+    use = mask & ok & np.isfinite(blur[:, 0])
+    out[use, :2] = sm[use, :2] + noise[use]
+    return out
+
+
 def prepared(game, seed, target="touch"):
     """Ball made to look like ours for one match, plus the target events (touches, or possession
     changes for the turnover network)."""
     d = dd.load(game)
-    ball = dd.prepare_ball(d, seed)        # dead ball animated, blurred, our gaps
+    ball = yolo_like(d, seed) if YOLO else dd.prepare_ball(d, seed)   # dead ball animated, blurred, our gaps
     frames, teams = (tl.load(game)[:2] if target == "touch" else
                      short_changes(d["controlled"]) if target == "short" else
                      changes(d["controlled"]))
@@ -130,12 +167,17 @@ def main():
     parser.add_argument("--warp", type=float, default=1.0,
                         help="time-warp DFL by this factor (dfl_data.set_warp); models go to "
                              "data/cache/models/warp<k>/")
+    parser.add_argument("--yolo", action="store_true",
+                        help="train / test on a YOLO-like ball (models touch_net_yolo_*)")
     args = parser.parse_args()
-    global MODEL_DIR
+    global MODEL_DIR, YOLO
+    YOLO = args.yolo
     if args.warp != 1.0:
         dd.set_warp(args.warp)
         MODEL_DIR = os.path.join(MODEL_DIR, "warp{:g}".format(args.warp))
     stem = {"touch": "touch_net", "turnover": "turnover_net", "short": "short_net"}[args.target]
+    if YOLO:
+        stem += "_yolo"
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     print("building inputs ...", flush=True)

@@ -3418,6 +3418,27 @@ scored on 300 frames against the tracking ball projected into the video:
 - Viewer: `possession_view.py --yolo` adds the YOLO ball's speed / velocity change and the touch
   network on the YOLO ball; with `--compare` the truth now stays on top of both submissions.
 
+**YOLO for the touches only (user's design).** At the public starts the cleaned YOLO ball has a
+velocity peak within +-1 frame at 10 of 17 starts (chance ~24% at its ~2 peaks/s), #10 9.7 m/s and
+#12 7.8 m/s where the tracking has none within 1 s; but those peaks are not locally the highest
+(#10 5th of 24, #12 8th of 20 within +-5 s). Refined ball (`yolo_ball.py refine`): tracking ball +
+a smoothed YOLO correction only where both exist and agree (52% of seen frames, median 0.65 m),
+unseen stays unseen; fed only to the touch inputs (`MTAH_TOUCH_BALL=yolo` in
+`pipeline/features.build_features`). Touch network retrained on DFL with a YOLO-like ball
+(`train_touch.py --yolo`: sharp ball + slow 0.64 / 0.96 m and fast 0.14 / 0.21 m noise as measured
+on our match, ~46% of frames; held-out touch F1 0.59 within 0.5 s).
+
+| | new team's touch P at #7 / #10 / #12 / #15 | touch peaks / live min | public |
+|---|---|---|---|
+| v31_kt (tracking ball) | 0.93 / 0.17 / 0.04 / 0.74 | 37.6 | **0.774 / 0.926** |
+| YOLO-refined ball, deployed touch net | 0.98 / 0.27 / **0.52** / 0.22 | 57.7 | 0.588 / 0.896 |
+| YOLO-refined ball, retrained touch net | 1.00 / 0.15 / 0.01 / 0.08 | 40.0 | 0.614 / 0.933 |
+
+- With the deployed network YOLO lifts #12 to 0.52 (the first model to see it), but the network fires
+  50% more often and #1 / #2 / #15 break. The retrained network removes the extra peaks and #12's
+  with them: simulated jitter teaches it to ignore sharp jumps, real touches included. #10 / #12
+  stay missed in every variant; #6 improves (0.76 -> 0.91 / 0.94). v31_kt stays.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

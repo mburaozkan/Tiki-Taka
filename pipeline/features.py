@@ -464,12 +464,18 @@ def build_features(atd=None, events=None, ball_fill=None, touch_model=None, turn
     else:
         d_home, d_away = nearest_by_team(players, team, ball)
     c_home, c_away = carrier_by_team(players, team, ball)
-    touch, last_touch = touches(ball, d_home, d_away, gap)
+    tball = ball
+    if os.environ.get("MTAH_TOUCH_BALL"):          # touch inputs only: e.g. the YOLO-refined ball
+        tb = np.load(os.path.join(ROOT, "data", "cache", "yolo", "ball_refined_{}.npy".format(
+            os.environ.get("MTAH_BALL_MODEL", "bambezius"))))
+        tball = ball.copy()
+        tball[:len(tb), :2] = tb
+    touch, last_touch = touches(tball, d_home, d_away, gap)
     touch_prob = np.zeros((n, 2), dtype=np.float32)
     if touch_model is not None:
         from pipeline import touch_net
         path = len(touch_model[1]) > touch_net.n_base_inputs()
-        prob = touch_net.predict(touch_model, touch_net.inputs(players, ball, team, (LENGTH, WIDTH),
+        prob = touch_net.predict(touch_model, touch_net.inputs(players, tball, team, (LENGTH, WIDTH),
                                                                path=path))
         touch_prob = prob[:, 1:].astype(np.float32)
         frames, sides = touch_net.pick(prob, touch_net.PICK_THRESHOLD)
