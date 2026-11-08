@@ -195,7 +195,7 @@ def train_cmd(args):
 
 # ---------------------------------------------------------------- decode / eval
 
-def viterbi(pr, blk, w, bias, dmask=None):
+def viterbi(pr, blk, w, bias, dmask=None, tbias=None):
     """codes (H / A / D) from the change net's output (n, 8): 5 change heads + class P.
     dmask (n,) bool: if given, D exactly there (the team decided by the net elsewhere)."""
     n = len(pr)
@@ -206,6 +206,8 @@ def viterbi(pr, blk, w, bias, dmask=None):
         pr = pr.copy()
         pr[:, 2:N_TGT] = 0.5 / K                                     # stop / restart free: D is fixed
     ch = np.log(np.clip(K * pr[:, :N_TGT], 1e-8, 0.5)) + bias
+    if tbias is not None:                                            # own bias for turnovers
+        ch[:, :2] += tbias - bias
     # trans[t, i, j]: log weight of being in i at t-1 and j at t
     tr = np.zeros((n, 3, 3), dtype=np.float64)
     tr[:, 1, 0] = ch[:, 0]

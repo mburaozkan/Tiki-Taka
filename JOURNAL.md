@@ -3246,6 +3246,17 @@ logistic model of net + signals fitted on the other two providers.
 - The net ranks turnover frames well (AUC 0.92 on DFL) but finds only 47% within 1 s: the loss is
   in how sharp and how confident the peak is at the right frame, not in missing evidence of this kind.
 
+### 2026-11-08: c1dl10, own turnover bias, averaging nets (DFL, held out)
+
+- **c1dl10** (DFL sampled x10 instead of x5): DFL 0.6519 (c1dl 0.6514), turnovers within 1 s 47%
+  as before. DFL's weight is not the limit.
+- **Own decoder bias for turnovers** (`change_net.viterbi(tbias=)`, `tools/cn_tbias.py`): flat
+  (0.6487-0.6517 over the grid); picked leave one match out -0.0007 (c1dl) / -0.0017 (c1dl10).
+  More predicted turnovers bring as many false ones as true ones: the decoder is not the lever.
+- **Averaging the held-out predictions of several nets** (w 0.5, bias -3): c1dl 0.6514, c1dl + c1dl10
+  0.6577, c1dl + c1chdl 0.6604, **c1dl + c1dl10 + c1chdl 0.6657 (+0.014)**. An ensemble of variants is
+  worth about +0.01-0.015 on DFL; kept for the end (SkillCorner / PFF / public still to check).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
