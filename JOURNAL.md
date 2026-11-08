@@ -3308,6 +3308,15 @@ them live. Fillers, scored against DFL's true ball in the test-seed gaps:
   little (62 -> 66%). Running: the change net retrained with the ball-relative inputs rebuilt from
   the ball net in the gaps (c1dlb, `tools/cn_ballfill.py`, `CN_X=xb`).
 
+**c1dlb (c1dl with the ball net in the gaps; SkillCorner / PFF filled by the all-DFL model, 32-40%
+of their frames are unseen too):** DFL 0.6499 (c1dl 0.6514), SkillCorner 0.7001 (0.6981), PFF 0.7289
+(0.7294). **Turnovers in ball gaps found within 1 s: 17% -> 27% on DFL**, all turnovers 45% -> 46%;
+the overall score is flat (single seed). It differs from c1dl more than the other variants, so it
+averages well: **c1dl + c1dlb 0.6671**, c1dl + c1dl10 + c1chdl + c1dlb **0.6702** (best DFL so far).
+Running: c1dlbd = c1dlb + two duel inputs per team (`tools/cn_duel.py`: speed of the nearest player
+relative to the ball, how long the same player has been nearest within 3 m). Added: a forgiving
+change target (`CN_TOL`, a peak anywhere within +-TOL frames counts).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

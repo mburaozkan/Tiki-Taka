@@ -64,6 +64,7 @@ def targets_from_cls(cls):
     return y
 
 
+TOL = int(os.environ.get("CN_TOL", "0"))         # > 0: forgiving change target, +-TOL frames
 DFL_W = float(os.environ.get("CN_DFL", "0"))     # > 0: DFL's 7 matches join training, sampled x this
 
 
@@ -147,8 +148,22 @@ def train_one(keys, epochs, seed=0, log=""):
             cb = torch.from_numpy(np.stack(bc)).to(dev)
             out = model(xb)
             mask = (cb >= 0).float()
-            bce = torch.nn.functional.binary_cross_entropy_with_logits(
-                out[..., :N_TGT], yb, pos_weight=pos_w, reduction="none").mean(-1)
+            if TOL > 0:
+                # forgiving target: a peak anywhere within +-TOL frames of a change counts
+                lg = out[..., :N_TGT].transpose(1, 2)                       # (b, 5, T)
+                yt = yb.transpose(1, 2)
+                ctr = (yt >= 0.999).float()
+                k = 2 * TOL + 1
+                pooled = torch.nn.functional.max_pool1d(lg, k, 1, TOL)
+                near = torch.nn.functional.max_pool1d(ctr, k, 1, TOL)
+                lp = torch.nn.functional.binary_cross_entropy_with_logits(pooled, torch.ones_like(pooled),
+                                                                         reduction="none") * ctr * 20.0
+                ln = torch.nn.functional.binary_cross_entropy_with_logits(lg, torch.zeros_like(lg),
+                                                                         reduction="none") * (1 - near)
+                bce = (lp + ln).transpose(1, 2).mean(-1)
+            else:
+                bce = torch.nn.functional.binary_cross_entropy_with_logits(
+                    out[..., :N_TGT], yb, pos_weight=pos_w, reduction="none").mean(-1)
             ce = torch.nn.functional.cross_entropy(out[..., N_TGT:].reshape(-1, 3),
                                                    cb.clamp(min=0).reshape(-1),
                                                    reduction="none").reshape(cb.shape)

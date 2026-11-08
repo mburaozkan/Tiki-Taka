@@ -53,6 +53,8 @@ SHARED = ["bx", "by", "bz", "bvx", "bvy", "bspd", "bacc", "seen", "gap", "handD"
 NEG_ON_SWAP = {"bx", "bvx"}     # home-frame ball x components flip on an H/A swap
 TEAM = ["d1", "d2", "d3", "n2", "n5", "n10", "nspd", "ntow", "cx", "spread", "touch", "fd",
         "fc", "fm", "p1", "ref", "vote"]
+BASE_TEAM = list(TEAM)
+TEAM = TEAM + [c for c in os.environ.get("SN_EXTRA", "").split(",") if c]   # extra team channels (cn_duel.py)
 
 
 def channel_names():
