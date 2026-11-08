@@ -3329,6 +3329,25 @@ the true turnovers that have no predicted turnover within 2 s: +0.156 (-> 0.822)
 Timing is nearly worthless; the road to 0.80 is detecting the ~40% of turnovers the net never calls
 (mostly short possessions and contested balls), without adding as many false ones.
 
+### 2026-11-08: case study of missed turnovers on DFL open data (`tools/dfl_cases.py`, `tools/dfl_flag_rule.py`)
+
+(DFL open data only, never our match.) DFL's truth is the possession flag of DFL's tracking feed,
+cleaned with the events. c1dlbd misses 525 of 1280 true turnovers (no predicted one within 2 s).
+- **Events within +-1 s:** none at all 26% of turnovers (missed 37%); new team's clearance / block /
+  header / deflection (OtherBallAction) missed 54%, with an uncontrolled tackle 62-82%; only the old
+  team's pass nearby (interception counted from it) 47%; clean new-team play or a won tackle 21-30%.
+- **When the flag changes, the new team's nearest player is at the ball** (median 0.6 m, found and
+  missed alike); it is not a nearest-team rule (true team = nearest team on 77% of live frames).
+  Missed ones are more contested (old team 1.7 m vs 2.3 m) and come on fast balls more often (41% vs
+  31% over 8 m/s): first touches on interceptions and deflections.
+- **Timelines (15 missed, 5 found): the commonest miss is "right but outvoted"**: the turnover head
+  peaks at 0.8-0.9 on the exact frame, but the class head stays with the old team (P(new) 0.05-0.55),
+  so the decoder drops it, especially when the new possession is short (a header flicked on, then
+  won back). Found turnovers have the class head flip within 0.2 s of the peak.
+- Next: a second-stage judge for the turnover peaks the decoder did not take (peak height, class head
+  before / after, distances, ball speed / height, a returning peak), trained on the held-out outputs
+  of all 91 matches, accepted peaks written into the sequence; judged on DFL leave one match out.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
