@@ -164,6 +164,9 @@ def main():
                         help="keeper visible per team (pipeline/track_fix.keeper_status) as two "
                              "strips; on the pitch the raw tracking, the players that rule ignores "
                              "(the other team's doubled or swapped keeper) drawn as grey crosses")
+    parser.add_argument("--yolo", action="store_true",
+                        help="two extra rows: the YOLO ball's speed / velocity change and the touch "
+                             "network run on the YOLO ball (tools/yolo_ball.py clean, tools/ours_yolo.py)")
     parser.add_argument("--features", action="store_true",
                         help="a second window with every feature we have (tools/feature_panel.py): "
                              "change-net inputs and outputs, duel inputs, ball net, team reaction")
@@ -202,11 +205,12 @@ def main():
     t = (np.arange(a, b) - a) / float(FPS)
     f = s["f"]
 
-    fig = plt.figure(figsize=(16, 9))
-    grid = fig.add_gridspec(6, 2, width_ratios=(2.2, 1), height_ratios=(1.1, 1.3, 1, 1, 1, 1),
-                            left=0.07, right=0.98, top=0.95, bottom=0.12, hspace=0.25, wspace=0.12)
+    nrow = 8 if args.yolo else 6
+    fig = plt.figure(figsize=(16, 11 if args.yolo else 9))
+    grid = fig.add_gridspec(nrow, 2, width_ratios=(2.2, 1), height_ratios=(1.1, 1.3) + (1,) * (nrow - 2),
+                            left=0.07, right=0.98, top=0.95, bottom=0.1, hspace=0.25, wspace=0.12)
     axes = [fig.add_subplot(grid[0, 0])]
-    axes += [fig.add_subplot(grid[i, 0], sharex=axes[0]) for i in range(1, 6)]
+    axes += [fig.add_subplot(grid[i, 0], sharex=axes[0]) for i in range(1, nrow)]
     pitch_ax = fig.add_subplot(grid[:, 1])
     name = os.path.splitext(os.path.basename(args.sub))[0]
     top = os.path.splitext(os.path.basename(args.compare))[0] if args.compare else "truth"
@@ -216,10 +220,15 @@ def main():
         where, name, top, os.environ.get("MTAH_VARIANT", "") or "raw tracking"))
 
     ax = axes[0]
-    strip(ax, (other if other is not None else gt)[a:b], t, 0.80, top)
+    in_public = np.any(gt[a:b] != pm.X)
+    strip(ax, (gt if (in_public or other is None) else other)[a:b], t, 0.80,
+          "truth" if (in_public or other is None) else top)
     strip(ax, sub[a:b], t, 0.61, os.path.splitext(os.path.basename(args.sub))[0])
     hand = np.where(np.isin(s["hand"][a:b], (pm.H, pm.A)), pm.X, pm.D)
-    strip(ax, hand, t, 0.42, "hand D")
+    if other is not None and in_public:          # truth on top, then both submissions
+        strip(ax, other[a:b], t, 0.42, top)
+    else:
+        strip(ax, hand, t, 0.42, "hand D")
     if args.keepers:
         from atd_cache import load_arrays
         from games import GAME, half_video_blocks
@@ -314,8 +323,29 @@ def main():
                     label="{} {} (+4 s)".format(side, name))
     ax.axhline(0, color="grey", lw=0.5)
     ax.set_ylabel("reaction")
-    ax.set_xlabel("seconds from window start")
     ax.legend(loc="upper right", fontsize=7, ncol=2)
+    if args.yolo:
+        yb = np.load(os.path.join(dd.DATA_DIR, "cache", "yolo", "ball_clean_bambezius.npy"))
+        ys, ydv = ball_track(yb)
+        ax = axes[6]
+        ax.plot(t, np.minimum(ys[a:b], 30), color="#6b46c1", lw=1, label="YOLO ball speed")
+        ax.plot(t, np.minimum(ydv[a:b], 30), color="#d53f8c", lw=1, label="YOLO velocity change")
+        ax.plot(t, np.minimum(speed[a:b], 30), color="#4a5568", lw=0.7, ls="--", label="tracking speed")
+        ax.plot(t, np.minimum(dv[a:b], 30), color="#dd6b20", lw=0.7, ls="--", label="tracking change")
+        ax.axhline(features.TOUCH_DV_MS, color="#d53f8c", lw=0.5, ls="--")
+        ax.set_ylim(0, 30)
+        ax.set_ylabel("YOLO ball")
+        ax.legend(loc="upper left", fontsize=7, ncol=4)
+        yx = np.load(os.path.join(dd.DATA_DIR, "cache", "yolo", "v31_yolo_extras.npz"))
+        ax = axes[7]
+        ax.plot(t, yx["touch_p_home"][a:b], color=COLORS[pm.H], lw=1.2, label="P(home touch) YOLO ball")
+        ax.plot(t, yx["touch_p_away"][a:b], color=COLORS[pm.A], lw=1.2, label="P(away touch) YOLO ball")
+        ax.plot(t, f["touch_p_home"][a:b], color=COLORS[pm.H], lw=0.6, ls="--", label="tracking")
+        ax.plot(t, f["touch_p_away"][a:b], color=COLORS[pm.A], lw=0.6, ls="--", label="tracking")
+        ax.set_ylim(0, 1.02)
+        ax.set_ylabel("touch (YOLO)")
+        ax.legend(loc="upper left", fontsize=7, ncol=4)
+    axes[-1].set_xlabel("seconds from window start")
     for ax in axes[:-1]:
         plt.setp(ax.get_xticklabels(), visible=False)
     cursors = [ax.axvline(0, color="black", lw=0.8) for ax in axes]

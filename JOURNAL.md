@@ -3395,6 +3395,29 @@ change, or with ret = 1 to an opposite peak within 5 s = a short possession):
   c1chdl 0.66 / 0.12 / 0.38. The nets barely see #10 / #12 on our match, so no insert threshold can
   catch them without letting false peaks in. Running: c1dlbd 20 epochs, seeds 1-2 (sharper peaks?).
 
+### 2026-11-08: pretrained YOLO ball detector on our video (user's idea; `tools/yolo_ball.py`)
+
+Three pretrained ball detectors from Hugging Face (pickles scanned before loading), no training,
+scored on 300 frames against the tracking ball projected into the video:
+
+| model | found | within 10 / 25 px | median | far (> 50 px) |
+|---|---|---|---|---|
+| uisikdag (YOLOv8, players + ball), 1920 px | 98% | 18% / 29% | 329 px | 63% |
+| **bambezius (YOLO11n, SoccerNet ball), 1920 px** | 97% | **24% / 47%** | **25 px** | 37% |
+| acatorcini (YOLOv9, ball), 1920 px | 95% | 15% / 30% | 113 px | 54% |
+
+- bambezius on the full match (preferring the ball box nearest the tracking ball): where both exist,
+  0.9 m apart (median), 54% within 1 m; raw track jumpy (597 velocity peaks in the public window vs
+  62 for the tracking).
+- Cleaned (kept where consistent with its +-3-frame median, within 3 m of the tracking ball, or
+  runs >= 5 frames in tracking gaps; smoothed sigma 1.5 frames; `yolo_ball.py clean`): YOLO gives
+  47% of frames (30% replacing the tracking, 17% filling gaps); ball seen 57% -> 74%.
+- **v31_kt rebuilt on that ball (`MTAH_BALL=yolo`, `tools/ours_yolo.py`): public 0.581 / 0.881**
+  (v31_kt 0.774 / 0.926); 290 possessions (233). #10 / #12 still missed; #1 / #2 shift 3-5 s, #15
+  lost, #16 0.94 -> 0.63. The YOLO ball adds noise rather than the missing touches.
+- Viewer: `possession_view.py --yolo` adds the YOLO ball's speed / velocity change and the touch
+  network on the YOLO ball; with `--compare` the truth now stays on top of both submissions.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

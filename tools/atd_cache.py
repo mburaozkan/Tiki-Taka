@@ -102,6 +102,11 @@ def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False, 
         blocks = [(a, b + 1) for _, a, b in half_video_blocks(game)]
         arrays["players"], arrays["team"], _ = fix_teleports(arrays["players"], arrays["team"],
                                                              blocks, GAMES[game]["pitch"])
+    if os.environ.get("MTAH_BALL"):                  # e.g. yolo: ball x / y from tools/yolo_ball.py clean
+        yb = np.load(os.path.join(CACHE_DIR, "yolo", "ball_clean_{}.npy".format(
+            os.environ.get("MTAH_BALL_MODEL", "bambezius"))))
+        arrays["ball"] = arrays["ball"].copy()
+        arrays["ball"][:len(yb), :2] = yb
     if "kf" in variant():
         from games import GAMES, half_video_blocks
         from pipeline.track_fix import fix_keepers

@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "evaluation"))
 
-GRID = list(itertools.product((0.0, 0.1, 0.2, 0.3), (0.5, 0.3), (25.0, 15.0)))
+GRID = [tuple(float(v) for v in s.split(",")) for s in os.environ.get("DB_GRID", "").split(";") if s] or list(itertools.product((0.0, 0.1, 0.2, 0.3), (0.5, 0.3), (25.0, 15.0)))
 
 
 def ext_job(job):
@@ -100,7 +100,7 @@ def ours_cmd(args):
     tag = "db{:g}g{:g}c{:g}".format(bias, gamma, cost).replace(".", "")
     for nm, prefix in (("v31_d1", os.path.join("models", "dead_ext_d1")), ("v31", None)):
         codes, _ = oc.ours_v31(dead_prefix=prefix)
-        print("  " + str(oc.write_and_score(codes, "{}_{}{}".format(nm, tag, os.environ.get("MTAH_VARIANT", "")))))
+        print("  " + str(oc.write_and_score(codes, "{}_{}".format(nm, tag))))
 
 
 def main():
