@@ -3194,6 +3194,34 @@ possessions that start with a turnover written in from the truth +0.225, those t
 stoppage +0.097; by length < 2 s +0.087, 2-5 s +0.100, 5-10 s +0.069, >= 10 s +0.064. **The remaining
 gap on DFL is the team decision, i.e. the turnovers**, not the dead ball (c1dl fixed most of that).
 
+### 2026-11-08: why c1dl misses on DFL (`tools/cn_dfl_miss.py`)
+
+c1dl held out on DFL, decoded alone (w 0.5, bias -3, 0.6514). True possessions missed (IoU < 0.5):
+
+| length | share | caught | missed as: D / other team / merged / split / shifted |
+|---|---|---|---|
+| < 2 s | 14% | 14% | 14% / 52% / 20% / 0% / 1% |
+| 2-5 s | 25% | 42% | 8% / 31% / 17% / 0% / 3% |
+| 5-10 s | 25% | 67% | 5% / 13% / 9% / 1% / 5% |
+| 10-20 s | 19% | 86% | 1% / 3% / 5% / 3% / 1% |
+| >= 20 s | 17% | 91% | 2% / 1% / 2% / 3% / 1% |
+
+- Possessions that start with a turnover (64% of all) are caught 59%, after a stoppage 63%; short
+  ones after a turnover are mostly lost to the other team (the old possession carries straight
+  through them: 59% of < 2 s, 31% of 2-5 s).
+- **Long possessions (>= 10 s) are caught 86-91%; their small losses are splits, merges and edges,
+  not the wrong team** (as on SkillCorner / PFF). The oracle cost of 5-10 s / >= 10 s comes from
+  boundary shifts that push IoU under the stricter thresholds.
+- **True turnovers (1280): found within 0.2 / 0.5 / 1 / 2 s: 37% / 42% / 47% / 59%.** When found,
+  it is on time (median offset 0.0 s). The nearest predicted turnover is 1-5 s off for 26% and
+  more than 5 s off (i.e. not detected at all) for 27%.
+- **Ball unseen around the turnover (17.5% of turnovers): recall 17%**; ball seen (79%): 54%. So most
+  missed turnovers happen with the ball visible: the evidence is there but not read.
+- Recall by length of the new possession: < 2 s 21%, 2-5 s 41%, 5-10 s 55%, >= 10 s 59%. Even
+  turnovers that start a long possession are missed 4 in 10 times within 1 s.
+- Running: c1dl10 (DFL x10). Next: turnover signals by AUC, and whether each adds to the net's own
+  turnover probability.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
