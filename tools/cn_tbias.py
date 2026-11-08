@@ -21,8 +21,8 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "evaluation"))
 
-W = (0.5, 1.0)
-BIAS = (-3.0, -1.5)
+W = tuple(float(v) for v in os.environ.get("TB_W", "0.5,1.0").split(","))
+BIAS = tuple(float(v) for v in os.environ.get("TB_BIAS", "-3.0,-1.5").split(","))
 TB = (-4.5, -3.0, -2.0, -1.0, 0.0)
 
 

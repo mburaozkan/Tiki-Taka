@@ -3257,6 +3257,27 @@ logistic model of net + signals fitted on the other two providers.
   0.6577, c1dl + c1chdl 0.6604, **c1dl + c1dl10 + c1chdl 0.6657 (+0.014)**. An ensemble of variants is
   worth about +0.01-0.015 on DFL; kept for the end (SkillCorner / PFF / public still to check).
 
+### 2026-11-08: which turnovers c1dl misses on DFL, by contact type (`cn_dfl_miss.py` section 5)
+
+At each true turnover (+-0.2 s distances, +-0.5 s net peak):
+
+| type | share of turnovers | found within 1 s | share of the misses | net P peak, found / missed |
+|---|---|---|---|---|
+| ball unseen | 19% | 17% | **29%** | 0.60 / **0.07** |
+| duel (both teams within 2.5 m) | 48% | 46% | **48%** | 0.93 / 0.54 |
+| pass cut (ball in fast, old team > 4 m) | 11% | 69% | 6% | 0.96 / 0.69 |
+| other (new team at the ball, old 2.5-4 m) | 20% | 58% | 16% | 0.95 / 0.66 |
+| loose (new team > 3 m) | 2% | 48% | 2% | |
+
+- **In ball gaps the net is blind** (median peak 0.07 at the missed ones): in a gap every
+  ball-relative input (nearest distances, counts, approach speed) is blank and the ball sits at 0.
+- **Duels are half of all turnovers and half of the misses**; there the net often fires (median 0.54)
+  but as many false peaks of the same height exist. 58% of all missed turnovers have a peak >= 0.3.
+- Decoder grids confirm it (emission weight 0.1-1, stop / turnover bias -4.5 to 0): flat, best
+  picked leave one match out -0.0045. Better evidence is needed, not a different decoder.
+- Next: give the net a ball in the gaps (first interpolated between the gap's ends, with the
+  ball-relative inputs recomputed from it; then a learned ball-from-players estimate).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

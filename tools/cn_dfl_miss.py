@@ -64,7 +64,7 @@ def why_rows(lab, filled, truth, pred, flags):
     return rows
 
 
-def turnover_rows(lab, filled, runs, seen, truth):
+def turnover_rows(lab, filled, runs, seen, truth, X=None, col=None, pr=None):
     """per true turnover: offset to nearest predicted turnover, what pred does, seen, new length."""
     tc = [f for f, k in M.changes(lab, runs) if k == 0]
     pc = np.array([f for f, k in M.changes(filled, runs) if k == 0])
@@ -86,8 +86,33 @@ def turnover_rows(lab, filled, runs, seen, truth):
             what = 3
         near_other = len(allc) and np.min(np.abs(allc - t)) <= FPS
         sn = seen[max(t - 12, 0):t + 13].mean()
-        out.append([off, what, sn, start_len.get(t, 0) / FPS, near_other])
+        row = [off, what, sn, start_len.get(t, 0) / FPS, near_other]
+        if X is not None:
+            o, nw = ("h_", "a_") if old == H else ("a_", "h_")
+            w5 = slice(max(t - 5, 0), t + 6)
+            w12 = slice(max(t - 12, 0), t + 13)
+            inc = X[max(t - 12, 0):t + 1, col["bspd"]]
+            row += [inc.max() if sn > 0.5 else np.nan,
+                    X[w5, col[nw + "d1"]].min(), X[w5, col[o + "d1"]].min(),
+                    X[w12, col[nw + "touch"]].max(), X[w12, col["bz"]].max(),
+                    pr[w12, 0 if lab[t] == H else 1].max()]
+        out.append(row)
     return out
+
+
+def contact_type(r):
+    """0 gap, 1 duel (both teams within 2.5 m), 2 pass cut (ball in fast, old team > 4 m),
+    3 loose (new team > 3 m from the ball), 4 other."""
+    inc, dn, do = r[5], r[6], r[7]
+    if r[2] < 0.5:
+        return 0
+    if dn <= 2.5 and do <= 2.5:
+        return 1
+    if inc >= 8 and do > 4:
+        return 2
+    if dn > 3:
+        return 3
+    return 4
 
 
 def main():
@@ -98,11 +123,14 @@ def main():
     args = ap.parse_args()
     import eval_touch_run as tr
     import cn_dfl
-    ci = S.channel_names().index("seen")
+    names = S.channel_names()
+    ci = names.index("seen")
+    col = {k: names.index(k) for k in names}
     R, TR, sc, orc = [], [], [], []
     for g in dd.GAMES:
         with np.load(cn_dfl.path(g)) as z:
-            lab, blk, seen = z["lab"], [tuple(b) for b in z["blk"]], z["x"][:, ci].astype(np.float32)
+            lab, blk, X = z["lab"], [tuple(b) for b in z["blk"]], z["x"].astype(np.float32)
+            seen = X[:, ci]
         pr = cn_dfl.heldout(args.tag, g)
         held = pr is not None
         if not held:
@@ -133,7 +161,7 @@ def main():
             o_.append(tr.score(lab, o) - s)
         orc.append(o_)
         R += why_rows(lab, filled, truth, pred, flags)
-        TR += turnover_rows(lab, filled, runs, seen, truth)
+        TR += turnover_rows(lab, filled, runs, seen, truth, X, col, pr)
     R, TR, orc = np.array(R, float), np.array(TR, float), np.array(orc).mean(axis=0)
     print("{} on DFL ({}held out), w {:g} bias {:g}: spellF1 {:.4f}".format(
         args.tag, "" if held else "NOT ", args.w, args.bias, np.mean(sc)))
@@ -196,6 +224,26 @@ def main():
         if s_.sum():
             print("    {:<14} share {:>5.1%} recall 1 s {:>5.1%}".format(nm, s_.mean(),
                                                                        np.mean(np.abs(off[s_]) <= 25)))
+
+    print()
+    print("5. true turnovers by contact type (at the turnover +-0.2 / 0.5 s)")
+    ct = np.array([contact_type(r) for r in TR])
+    tn = ["ball unseen", "duel (both <= 2.5 m)", "pass cut (fast in, old > 4 m)", "loose (new > 3 m)", "other"]
+    print("  {:<31} {:>6} {:>8} | medians, found / missed: new d1, old d1, new touch P, net P".format(
+        "type", "share", "rec 1 s"))
+    for k, nm in enumerate(tn):
+        s_ = ct == k
+        if not s_.sum():
+            continue
+        f_, m_ = s_ & ~ms, s_ & ms
+        med = lambda c, sel: np.nanmedian(TR[sel, c]) if sel.sum() else np.nan
+        print("  {:<31} {:>5.1%} {:>7.1%} | {:.1f} / {:.1f} m, {:.1f} / {:.1f} m, {:.2f} / {:.2f}, {:.2f} / {:.2f}".format(
+            nm, s_.mean(), np.mean(~ms[s_]), med(6, f_), med(6, m_), med(7, f_), med(7, m_),
+            med(8, f_), med(8, m_), med(10, f_), med(10, m_)))
+    print("  share of all missed turnovers: " + ", ".join(
+        "{} {:.0%}".format(nm.split(" (")[0], np.mean(ct[ms] == k)) for k, nm in enumerate(tn)))
+    print("  missed with net P peak < 0.1 {:.0%}, 0.1-0.3 {:.0%}, >= 0.3 {:.0%}".format(
+        np.mean(TR[ms, 10] < 0.1), np.mean((TR[ms, 10] >= 0.1) & (TR[ms, 10] < 0.3)), np.mean(TR[ms, 10] >= 0.3)))
 
 
 if __name__ == "__main__":
