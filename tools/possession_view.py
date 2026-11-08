@@ -36,6 +36,7 @@ Right: the pitch at the cursor (home blue, away red, ball black; with --keepers 
 and players the keeper rule ignores as grey crosses, so the other team's doubled keeper is not
 shown as theirs). Click on any plot, drag the
 slider, or use left / right (0.2 s; shift: 1 s) and space to play / pause.
+--features: a second window with every feature we have on the same time axis (tools/feature_panel.py).
 """
 
 import argparse
@@ -163,6 +164,9 @@ def main():
                         help="keeper visible per team (pipeline/track_fix.keeper_status) as two "
                              "strips; on the pitch the raw tracking, the players that rule ignores "
                              "(the other team's doubled or swapped keeper) drawn as grey crosses")
+    parser.add_argument("--features", action="store_true",
+                        help="a second window with every feature we have (tools/feature_panel.py): "
+                             "change-net inputs and outputs, duel inputs, ball net, team reaction")
     args = parser.parse_args()
     if args.frames is None and args.first is None:
         parser.error("give public possession numbers or --frames START SECONDS")
@@ -315,6 +319,20 @@ def main():
     for ax in axes[:-1]:
         plt.setp(ax.get_xticklabels(), visible=False)
     cursors = [ax.axvline(0, color="black", lw=0.8) for ax in axes]
+    fig2 = None
+    if args.features:
+        import feature_panel
+
+        def label_strips(ax2):
+            strip(ax2, (other if other is not None else gt)[a:b], t, 0.55, top, h=0.4)
+            strip(ax2, sub[a:b], t, 0.08, os.path.splitext(os.path.basename(args.sub))[0], h=0.4)
+            for i2, (sa, sb, k2) in enumerate(spells):
+                if sa < b and sb > a:
+                    ax2.text(((max(sa, a) + min(sb, b)) / 2.0 - a) / FPS, 0.75, "#{}".format(i2 + 1),
+                             ha="center", va="center", transform=ax2.get_xaxis_transform(), fontsize=8,
+                             color="white", weight="bold")
+        fig2, axes2 = feature_panel.build(plt, feature_panel.load(s), a, b, t, label_strips)
+        cursors += [ax2.axvline(0, color="black", lw=0.8) for ax2 in axes2]
 
     length, width = s["pitch"]
     pitch_ax.set_xlim(0, length)
@@ -359,6 +377,8 @@ def main():
         for c in cursors:
             c.set_xdata([sec, sec])
         fig.canvas.draw_idle()
+        if fig2 is not None:
+            fig2.canvas.draw_idle()
 
     slider.on_changed(show)
     timer = fig.canvas.new_timer(interval=80)
@@ -376,11 +396,14 @@ def main():
             (timer.start if playing[0] else timer.stop)()
 
     def on_click(event):
-        if event.inaxes in axes and event.xdata is not None:
+        if (event.inaxes in axes or (fig2 is not None and event.inaxes in fig2.axes))                 and event.xdata is not None:
             slider.set_val(min(max(event.xdata, 0), t[-1]))
 
     fig.canvas.mpl_connect("key_press_event", on_key)
     fig.canvas.mpl_connect("button_press_event", on_click)
+    if fig2 is not None:
+        fig2.canvas.mpl_connect("button_press_event", on_click)
+        fig2.canvas.mpl_connect("key_press_event", on_key)
     show(0.0)
     if os.environ.get("POSSESSION_VIEW_NO_SHOW"):
         fig.canvas.draw()
