@@ -3355,6 +3355,25 @@ than the peak height itself (AUC 0.673 vs 0.676); writing accepted peaks in: -0.
 thresholds 0.3-0.6, nested +0.000. The true peaks the decoder drops look like the false ones from
 outside: the remaining turnovers need evidence the current inputs do not carry.
 
+### 2026-11-08: forgiving target, per-player net p1, c1dlbd on our match
+
+| net | DFL (held out) | SkillCorner | PFF | public alone / D fixed / mix 0.3 / mix 0.5 |
+|---|---|---|---|---|
+| c1dl | 0.6514 | 0.6981 | 0.7294 | 0.637 / 0.667 / 0.686 (alpha 0.3, D fixed) |
+| c1dlbd | **0.6659** | 0.6974 | 0.7299 | 0.450 / 0.575 / 0.662 / 0.733 |
+| c1dlbdt (forgiving target +-0.5 s) | 0.6565 | 0.6834 | 0.7028 | |
+| p1 (12 nearest players as tokens, ball net in gaps) | 0.6410 | **0.7031** | **0.7381** | |
+
+- **Forgiving target: worse everywhere** (as the timing oracle predicted). Dropped.
+- **p1:** best on SkillCorner / PFF so far, but one DFL match collapses (0.479; the other six level
+  with c1dlbd); averaging adds nothing (c1dlbd + p1 0.6657).
+- **c1dlbd on our match (`tools/cn_ours_bd.py --duel`, all-91 model, ball net all-DFL in the gaps):
+  public 0.450 alone (c1dl 0.637), 0.733 mixed at alpha 0.5; base v31_d1 0.800.** Alone it calls 56% of
+  the match D. Our gaps (43% of frames) are mostly real stoppages while DFL's are cut into live play
+  too; the filled ball probably changes how dead time looks to the net. To check next: fill only
+  gaps the base calls live, or the ball net trained with our dead-ball gap pattern.
+- Files for the viewer: evaluation/results/v31_d1_c1dlbd_{alone,alone_dfix,mix03,mix05}_kt.csv.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
