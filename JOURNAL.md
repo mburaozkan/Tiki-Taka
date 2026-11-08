@@ -3222,6 +3222,30 @@ c1dl held out on DFL, decoded alone (w 0.5, bias -3, 0.6514). True possessions m
 - Running: c1dl10 (DFL x10). Next: turnover signals by AUC, and whether each adds to the net's own
   turnover probability.
 
+### 2026-11-08: team-reaction and ball-direction signals (`tools/turnover_signals.py`)
+
+Signals signed toward "turnover to H", future window minus past window (1 / 2 / 4 s, 0.4 s apart
+from the frame): team running direction (flow), players running at the ball within 20 m (press),
+team spread, team centroid depth, ball displacement toward the other goal. Live frames, positives
+within 2 frames of a true turnover; held-out c1dl as the net's score (max P within +-0.5 s); a
+logistic model of net + signals fitted on the other two providers.
+
+| AUC | SkillCorner | PFF | DFL |
+|---|---|---|---|
+| net c1dl alone | 0.953 | 0.943 | 0.917 |
+| best single signal (flow 2 s / press 4 s) | 0.66-0.67 | 0.62-0.69 | 0.61-0.63 |
+| depth (inverted: the side winning the ball is deep) | 0.65 | 0.64 | 0.63 |
+| ball displacement | 0.60 | 0.60 | 0.59 |
+| spread | 0.57 | 0.56 | 0.53 |
+| net + all signals | 0.954 | 0.943 | 0.918 |
+| hard cases (net < 0.3; 15 / 18 / 25% of turnovers): net alone -> net + all | 0.912 -> 0.918 | 0.880 -> 0.879 | 0.842 -> 0.844 |
+
+- **The team reaction is real but the net already has it**: each signal separates turnovers alone,
+  the same way on all three providers, yet adds at most +0.001 on top of the net (the bidirectional
+  GRU reads it from the centroid / nearest-player inputs). Not worth adding as inputs. Idea 2a closed.
+- The net ranks turnover frames well (AUC 0.92 on DFL) but finds only 47% within 1 s: the loss is
+  in how sharp and how confident the peak is at the right frame, not in missing evidence of this kind.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
