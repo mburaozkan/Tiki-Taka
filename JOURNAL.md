@@ -3317,6 +3317,12 @@ Running: c1dlbd = c1dlb + two duel inputs per team (`tools/cn_duel.py`: speed of
 relative to the ball, how long the same player has been nearest within 3 m). Added: a forgiving
 change target (`CN_TOL`, a peak anywhere within +-TOL frames counts).
 
+**c1dlbd (ball net in the gaps + duel inputs, `CN_X=xbd SN_EXTRA=ctl,keep CN_DFL=5`): DFL 0.6659
+held out (c1dl 0.6514, +0.0145, 6/1)**, the best single net so far; SkillCorner 0.6974, PFF 0.7299
+(flat). DFL turnovers within 1 s 45% -> 49%, duels 45.9% -> 48.6%, other contested 57.9% -> 60.6%.
+Averaging adds little on top now (with c1dl 0.6667, five nets 0.6693). Running: p1, the change net
+that sees the 12 players nearest the ball as tokens (`tools/player_net.py`).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
