@@ -3348,6 +3348,13 @@ cleaned with the events. c1dlbd misses 525 of 1280 true turnovers (no predicted 
   before / after, distances, ball speed / height, a returning peak), trained on the held-out outputs
   of all 91 matches, accepted peaks written into the sequence; judged on DFL leave one match out.
 
+**Second-stage judge (`tools/cn_stage2.py`): negative.** Untaken peaks >= 0.2: 43k over 91 matches,
+14% true (DFL: 403 per match, 59 true). A logistic judge on 18 features (peak, class head before /
+after, opposite peak, distances, ball speed / height / seen, touch peaks) separates them no better
+than the peak height itself (AUC 0.673 vs 0.676); writing accepted peaks in: -0.003 to -0.006 at
+thresholds 0.3-0.6, nested +0.000. The true peaks the decoder drops look like the false ones from
+outside: the remaining turnovers need evidence the current inputs do not carry.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
