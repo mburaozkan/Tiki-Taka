@@ -3374,6 +3374,27 @@ outside: the remaining turnovers need evidence the current inputs do not carry.
   gaps the base calls live, or the ball net trained with our dead-ball gap pattern.
 - Files for the viewer: evaluation/results/v31_d1_c1dlbd_{alone,alone_dfix,mix03,mix05}_kt.csv.
 
+### 2026-11-08: dead-ball bias, and c1dlbd as a turnover add-on to v31 (user's ideas)
+
+**Dead-ball decoder** (`pipeline/refine.DEAD_BIAS`, default 0; `tools/dead_bias_sweep.py`): the user
+saw v31_kt miss a stoppage after #5 (P(dead) rises, not enough). Grid bias 0-0.3 x hand weight
+0.5 / 0.3 x change cost 25 / 15 on v31_d1, DFL + every 4th SkillCorner / PFF: all within +-0.003.
+Most consistent: bias 0.2, cost 15: DFL +0.002 (5/1), SC +0.000, PFF +0.002 (11/2). Public: **v31_kt
+with bias 0.2: 0.7742 / 0.9312** (second score up from 0.9263, D 48.0% -> 48.6%); v31_d1_kt drops
+0.800 -> 0.787. File for the user's look: v31_db02g05c25_kt.csv.
+
+**Hybrid (`tools/cn_hybrid.py`): v31 keeps dead ball and team, c1dlbd peaks add turnovers** (peak >=
+thr, base live and on the other team, gates any / long ball / long or duel; extent to the base's next
+change, or with ret = 1 to an opposite peak within 5 s = a short possession):
+- extending to the base's next change always hurts (DFL -0.02 to -0.09);
+- short inserts at thr 0.85 help outside: DFL +0.007 (4/3), SkillCorner +0.014 (9/1), PFF +0.028
+  (31/1); turnovers within 1 s 41% -> 50%;
+- **public: every setting below v31_kt (best 0.750, thr 0.85 0.727)**: #10 / #12 stay missed and one
+  false 1.2 s H appears inside #16.
+- Peak turnover P at the starts of #7 / #10 / #12: c1dl 0.24 / 0.03 / 0.00, c1dlbd 0.32 / 0.33 / 0.00,
+  c1chdl 0.66 / 0.12 / 0.38. The nets barely see #10 / #12 on our match, so no insert threshold can
+  catch them without letting false peaks in. Running: c1dlbd 20 epochs, seeds 1-2 (sharper peaks?).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

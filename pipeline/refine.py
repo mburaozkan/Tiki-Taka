@@ -106,13 +106,16 @@ def dead_targets(lab, flip=False):
     return dead.astype(np.float32), dead | live
 
 
+DEAD_BIAS = 0.0        # added to every frame's dead score (> 0: dead ball called more easily)
+
+
 def decode_dead(hand, p_dead, blocks, beta, gamma, cost, step=5, floor=1e-4):
     """Hand-like codes (H for live, D, X outside blocks) from a two-state live / dead Viterbi per
     block on `step`-frame bins: dead scores beta * logit(p_dead) + gamma (hand D) or - gamma (hand
     live), live 0, `cost` per change (in frames' units: scores are summed over each bin)."""
     out = np.full(len(hand), 3, dtype=np.int8)
     q = np.clip(p_dead, floor, 1 - floor)
-    sc = beta * np.log(q / (1 - q)) + gamma * np.where(hand == 2, 1.0, -1.0)
+    sc = beta * np.log(q / (1 - q)) + gamma * np.where(hand == 2, 1.0, -1.0) + DEAD_BIAS
     for a, b in blocks:
         n = (b - a + step - 1) // step
         seg = np.zeros(n * step)
