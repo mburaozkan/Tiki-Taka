@@ -3323,6 +3323,12 @@ held out (c1dl 0.6514, +0.0145, 6/1)**, the best single net so far; SkillCorner 
 Averaging adds little on top now (with c1dl 0.6667, five nets 0.6693). Running: p1, the change net
 that sees the 12 players nearest the ball as tokens (`tools/player_net.py`).
 
+**What is 0.80 made of? (`tools/cn_ceiling.py`, c1dlbd on DFL, 0.6659):** moving every predicted
+turnover onto the true frame when it is within 0.5 / 1 / 2 s: +0.002 / +0.005 / +0.015. **Writing in
+the true turnovers that have no predicted turnover within 2 s: +0.156 (-> 0.822)**; both 0.836.
+Timing is nearly worthless; the road to 0.80 is detecting the ~40% of turnovers the net never calls
+(mostly short possessions and contested balls), without adding as many false ones.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
