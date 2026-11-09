@@ -101,11 +101,64 @@ def yolo_like(d, seed):
     return out
 
 
+REAL = None            # --yolo-real blur|sharp: real YOLO corrections from our match (tools/yolo_noise.py)
+REAL_CUT = 0.95
+
+
+def yolo_real(d, seed):
+    """blur: our tracking-like ball + a pasted real YOLO correction sequence (literal transplant).
+    sharp: where the pasted correction is non-zero, the sharp ball (smoothed 1 frame) + only its fast
+    part (correction - its 5-frame smooth); elsewhere the tracking-like ball. Same gaps."""
+    import yolo_noise
+    from scipy.ndimage import gaussian_filter1d
+    rng = np.random.default_rng(2000 + seed)
+    blur = dd.prepare_ball(d, seed)
+    n = len(blur)
+    seen = np.isfinite(blur[:, 0])
+    c = yolo_noise.paste(n, seen, yolo_noise.load(cut=REAL_CUT), rng) / np.array(dd.PITCH)
+    out = blur.copy()
+    if REAL == "blur":
+        out[seen, :2] = blur[seen, :2] + c[seen]
+        return out
+    sharp = dd.prepare_ball(d, seed, blur=False)
+    ok = np.isfinite(sharp[:, 0])
+    sm = gaussian_filter1d(np.nan_to_num(sharp[:, :2]), 1.0, axis=0)
+    fast = c - gaussian_filter1d(c, 5.0, axis=0)
+    use = seen & ok & (np.hypot(*c.T) > 1e-9)
+    out[use, :2] = sm[use] + fast[use]
+    return out
+
+
+RFDETR = False         # --rfdetr: the ball made to look like our cleaned RF-DETR ball (tools/detr_ball.py)
+RF_SD = 0.043          # m, white jitter: gives RF-DETR's measured 0.054 m (|ball - 2-frame smooth|, median)
+RF_OUT = 0.07          # share of frames with a single-frame wrong detection
+RF_OUT_M = (1.0, 8.0)  # its size, m
+
+
+def rfdetr_like(d, seed):
+    """DFL's sharp ball (dead ball animated, our gaps) + RF-DETR-like jitter and single-frame
+    outliers, then the same cleaning as our RF-DETR ball (detr_ball.clean_ball)."""
+    import detr_ball
+    rng = np.random.default_rng(3000 + seed)
+    sharp = dd.prepare_ball(d, seed, blur=False)
+    xy = sharp[:, :2] * np.array(dd.PITCH)
+    seen = np.isfinite(xy[:, 0])
+    xy = xy + rng.normal(0, RF_SD, xy.shape)
+    out = seen & (rng.random(len(xy)) < RF_OUT)
+    ang = rng.uniform(0, 2 * np.pi, out.sum())
+    r = rng.uniform(*RF_OUT_M, out.sum())
+    xy[out] += np.column_stack([np.cos(ang), np.sin(ang)]) * r[:, None]
+    ball = sharp.copy()
+    ball[:, :2] = detr_ball.clean_ball(xy) / np.array(dd.PITCH)
+    return ball
+
+
 def prepared(game, seed, target="touch"):
     """Ball made to look like ours for one match, plus the target events (touches, or possession
     changes for the turnover network)."""
     d = dd.load(game)
-    ball = yolo_like(d, seed) if YOLO else dd.prepare_ball(d, seed)   # dead ball animated, blurred, our gaps
+    ball = (rfdetr_like(d, seed) if RFDETR else yolo_real(d, seed) if REAL else yolo_like(d, seed) if YOLO
+            else dd.prepare_ball(d, seed))   # dead ball animated, blurred, our gaps
     frames, teams = (tl.load(game)[:2] if target == "touch" else
                      short_changes(d["controlled"]) if target == "short" else
                      changes(d["controlled"]))
@@ -169,15 +222,29 @@ def main():
                              "data/cache/models/warp<k>/")
     parser.add_argument("--yolo", action="store_true",
                         help="train / test on a YOLO-like ball (models touch_net_yolo_*)")
+    parser.add_argument("--yolo-real", choices=("blur", "sharp"),
+                        help="train / test on DFL + real YOLO corrections from our match "
+                             "(models touch_net_yr<b|s><cut>_*)")
+    parser.add_argument("--rfdetr", action="store_true",
+                        help="train / test on an RF-DETR-like sharp ball (models touch_net_rf_*)")
+    parser.add_argument("--cut", type=float, default=0.95, help="--yolo-real: tools/yolo_noise.py cut")
     args = parser.parse_args()
-    global MODEL_DIR, YOLO
+    global MODEL_DIR, YOLO, REAL, REAL_CUT, RFDETR
     YOLO = args.yolo
+    REAL, REAL_CUT = args.yolo_real, args.cut
+    RFDETR = args.rfdetr
     if args.warp != 1.0:
         dd.set_warp(args.warp)
         MODEL_DIR = os.path.join(MODEL_DIR, "warp{:g}".format(args.warp))
     stem = {"touch": "touch_net", "turnover": "turnover_net", "short": "short_net"}[args.target]
+    if dd.TOUCH_TAG:                 # a rebuilt chain's touch networks: plain names in their own folder
+        MODEL_DIR = os.path.join(MODEL_DIR, dd.TOUCH_TAG)
     if YOLO:
         stem += "_yolo"
+    if RFDETR and not dd.TOUCH_TAG:
+        stem += "_rf"
+    if REAL:
+        stem += "_yr{}{:g}".format(REAL[0], REAL_CUT * 100)
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     print("building inputs ...", flush=True)

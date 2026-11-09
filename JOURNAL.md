@@ -113,8 +113,9 @@ column gives the command for the current code.
 | v29_bd_b | submission 2026-10-28, renamed v30 on 2026-10-29: v29_tr_a + backdating (a change of team moves back to the other team's previous touch when that was weak (P < 0.7), within 9 s, nothing between, ball loose >= 1.5 m). DFL 0.5755 (+0.0024 vs v29_tr_a, 5/1; nested +0.0018) | 263 | 40% | 37.4% | 0.812 / 0.901 | v29's chain, then `python tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v29_bd_b` |
 | v30 | submission 2026-10-29 to 2026-10-30: v29_bd_b under its own version number (byte-identical). The dead-ball head candidate that used to be called v30 is now **dh1** (`v30_d1n_add.csv`) | 263 | 40% | 37.4% | 0.812 / 0.901 | v29's chain, then `python tools/eval_backdate.py --ours "p_max=0.7 max_s=9 loose_m=1.5" --name v30` |
 | v31 | submission 2026-10-30 to 2026-11-06: v30 + dead-ball head (d1n, add-only) + remove gate (a D stretch with mean head P(dead) < 0.1 is made live) protected by the ball-out rule (never a stretch with the ball seen out of play). DFL 0.6295 (+0.054 vs v30, 7/0); checked on the full match by video | 238 | 40% | 48.0% | 0.812 / 0.917 | v29's chain (v25, v29 builds), then `python tools/eval_dead_v30.py --ours 0.5 0.5 25 --gate 0.1 0 --protect --name v31` (models/dead_d1n_s0..2.pt; rebuild byte-identical, ef2ea808…) |
-| **v31_kt** | **submission (since 2026-11-06): v31's chain on the keeper-swap-corrected tracking (`track_fix.fix_teleports`, Gözde). Changes 27.6 s of the match; the public loss is #9–#13 only, where v31 scored on a fake H spell made by the swap** | 233 | 39% | 48.0% | **0.774 / 0.926** | `$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --name v31` -> `v31_kt.csv` (byte-identical, a62eb010…) |
+| v31_kt | submission 2026-11-06 to 2026-11-09: v31's chain on the keeper-swap-corrected tracking (`track_fix.fix_teleports`, Gözde). Changes 27.6 s of the match; the public loss is #9–#13 only, where v31 scored on a fake H spell made by the swap | 233 | 39% | 48.0% | 0.774 / 0.926 | `$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --name v31` -> `v31_kt.csv` (byte-identical, a62eb010…) |
 | **v31_d1_kt** | **working base (since 2026-11-06): v31_kt with the dead-ball head retrained on DFL + SkillCorner + PFF (models/dead_ext_d1_s0..1.pt) in place of d1n. SkillCorner +0.007 (18/2), PFF +0.017 (62/2), DFL -0.016 (1/6)** | 225 | 39% | 48.7% | **0.800 / 0.939** | `$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --dead models/dead_ext_d1 --name v31_d1` (byte-identical, 96e5f0fb…) |
+| **v31_d1_e3k_kt** | **submission (since 2026-11-09): v31_d1_kt + short-net spells (ensemble e3 = s1 + s1b + s1nz, trained on SkillCorner + PFF) kept by the check k1 (gen 0.6, keep >= 0.3, edges refined, over D). SkillCorner +0.037 / PFF +0.082 nested over v31_d1 (84/0), DFL +0.011 (4/3); short possessions caught 19% -> 44%** | 247 | 41% | 48.3% | **0.800 / 0.939** | `$env:MTAH_VARIANT="_kt"; python tools/short_net.py ours --ens "s1,s1b,s1nz:bz" --ens-tag e3 --check k1:0.6:0.3 --over-d --hi 0.7 --name v31_d1_e3k` (saved file af281f36…; rebuilds now differ by 1-2 frames, same score) |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -3439,6 +3440,176 @@ on our match, ~46% of frames; held-out touch F1 0.59 within 0.5 s).
   with them: simulated jitter teaches it to ignore sharp jumps, real touches included. #10 / #12
   stay missed in every variant; #6 improves (0.76 -> 0.91 / 0.94). v31_kt stays.
 
+### 2026-11-09: YOLO's real errors on DFL, and a physics filter (`tools/yolo_noise.py`, `tools/ball_denoise.py`)
+
+**Real-noise transplant (planned 2026-11-08).** `yolo_noise.py` builds a library of YOLO's real
+corrections on our match (refined ball - tracking ball, noise only, no labels), with +-0.5 s cut
+around the sharpest disagreements (likely real touches; cut 0.95 removes 26% of seen frames, 55 min
+left). `train_touch.py --yolo-real blur|sharp` pastes them onto DFL's ball (blur: the tracking-like
+ball + the correction; sharp: the sharp ball + its fast part). `tools/yolo_touch_check.py` prints
+touch P at public #7 / #10 / #12 / #15 and touch peaks per seen minute.
+
+| touch net, on the YOLO-refined ball | P at #7 / #10 / #12 / #15 | peaks / min (P >= 0.5) | held-out F1 0.5 s |
+|---|---|---|---|
+| deployed | 0.98 / 0.27 / **0.52** / 0.22 | 86.6 | |
+| simulated jitter (2026-11-08) | 1.00 / 0.15 / 0.01 / 0.08 | 30.9 | 0.59 |
+| real transplant, blur | 0.95 / 0.33 / 0.06 / 0.28 | 28.9 | 0.56 |
+| real transplant, sharp | 1.00 / 0.08 / 0.01 / 0.04 | 29.5 | 0.61 |
+
+(Deployed net on the tracking ball: 0.93 / 0.17 / 0.04 / 0.74, 35.6 / min.) The real noise removes the
+extra peaks, and #12 goes with it, as with simulated jitter.
+
+**Physics filter (user's idea: fix the noise on YOLO's side).** L1 trend filtering (piecewise
+straight-line motion with few kinks, per seen stretch). On DFL (sharp ball + our real YOLO noise)
+velocity-peak F1 against the teacher touches 0.46 -> 0.54 at lam 16-32 (clean ball 0.76). On our ball
+#12's velocity change is 26.4 m/s raw (2nd of 21 within +-5 s) but 4.9 m/s at lam 4: a 2-frame jump
+out and back, the shape of YOLO's jitter, not a lasting change of direction. Deployed net: #12 0.14
+(lam 4) / 0.02 (lam 16). Dropped: the YOLO ball shows #12 only as a blip.
+
+### 2026-11-09: SoccerNet ball-action spotting on the broadcast video (`tools/ball_actions.py`)
+
+T-DEED (github.com/arturxe2/T-DEED, public checkpoints, no NDA; the 2025 team baseline checkpoint is
+also there). Run on the broadcast video (it is the camera SoccerNet is trained on); events mapped
+back through `broadcast_align` with gaps bridged where the offset before and after agrees within 5
+frames (no replay between): 100% of the public window maps. Batch 1 (batch 4 needs ~9 GB).
+
+| | challenge1 (small) | challenge2 (big) | tracking touch net |
+|---|---|---|---|
+| public starts with an event within +-1 s, conf >= 0.2 / 0.4 | 14 / 11 of 17 (chance 89% / 60%) | 16 / 8 (chance 89% / 55%) | |
+| event's nearest-player team = true team | 82% | 84-91% | 93% |
+| #10 / #12 | PASS 0.45 / none | **PASS 0.74 (new team)** / DRIVE 0.28 (old team) | 0.17 / 0.04 |
+
+At chance at possession starts and weaker team evidence than the touch net; it sees #10 but has no
+external check (our labelled sets have no video). Not plugged into the chain.
+
+### 2026-11-09: RF-DETR ball detector (user's idea; `tools/detr_ball.py`)
+
+RF-DETR Large fine-tuned on SoccerNet (Hugging Face `julianzu9612/RFDETR-Soccernet`, pickle checked:
+tensors only, loaded with weights_only). Trained at 560 px, so each frame is cropped 560 x 560 at
+full resolution around the projected tracking ball. Public window +-5 s: ball found in 100% of frames
+(YOLO 80%), 0.03 m from YOLO where both see it, jitter 0.054 m vs YOLO 0.61 m. After removing single-
+frame outliers, #10 / #12 keep 11 / 17 m/s velocity changes under the filter (lam 0.5; YOLO's blip
+fell 26 -> 5): lasting changes of direction.
+
+| touch net | ball | P at #7 / #10 / #12 / #15 | peaks / min |
+|---|---|---|---|
+| deployed | tracking | 0.90 / 0.09 / 0.01 / 0.55 | 54 |
+| deployed | RF-DETR (where tracking sees the ball) | 0.99 / 0.13 / **0.34** / 0.20 | 86 |
+| trained on DFL sharp ball + RF-DETR-like noise (`train_touch.py --rfdetr`) | RF-DETR | 1.00 / 0.09 / 0.11 / 0.09 | 54 |
+| same | tracking | 0.89 / 0.41 / 0.01 / 0.65 | 40 |
+
+Held-out DFL touch F1 with the sharp RF-DETR-like ball: 0.70-0.76 (blurred ~0.59).
+
+**Whole chain rebuilt around the RF-DETR-trained touch net** (switch `MTAH_TOUCH_TAG=<tag>` in
+`dfl_data`: every DFL cache in `data/cache/dfl_<tag>/`, every model in `data/cache/models/<tag>/`;
+unset = paths as before, v31_kt rebuild unchanged). Touch folds, GBM + GRU, in-domain team, refiner
+(5 seeds), dead head (3 seeds), all held out:
+
+| DFL, leave one out | deployed | rebuilt |
+|---|---|---|
+| hand path | 0.535 | 0.482 |
+| GBM + GRU blend | 0.639 | 0.620 |
+| v29 stage (refiner) | 0.571 | 0.546 (7/7 lower) |
+| **v31** | **0.6295** | 0.6044 (7/7 lower) |
+| public | **0.774 / 0.926** | 0.700 / 0.925 |
+
+Worse everywhere: the net trained on a sharp ball reads the blurred tracking ball in this chain. The
+consistent version (sharp ball everywhere, a full-match RF-DETR pass) is untested.
+
+### 2026-11-09: SoccerTrack v2, a labelled set with video (`tools/soccertrack_probe.py`)
+
+SoccerTrack v2 v1.2 (Hugging Face `atomscott/soccertrack-v2`, CC BY 4.0): 10 university matches, 934
+min, fixed panoramic full-pitch video, per-frame player positions, 21,428 ball-action events with
+team and player (9,315 passes, 8,255 drives, 353 blocks, 307 tackles), 25 fps, frame-exact. Its ball
+track is rebuilt from the events (eval only, never an input). Probe: RF-DETR scanning the panorama in
+full-resolution tiles at event frames; mapping from the 65 pitch keypoints. Night match M1: a ball box
+within 2 m of the label in 9% of event frames; day match M3: 8%, but spare balls around the pitch get
+higher confidence than the match ball and the far side is compressed, so the measure is too strict.
+Stopped (user: seen enough). Still usable as 10 more tracking-only external matches.
+
+### 2026-11-09: the possession definition vs our external labels (`dfl_data.mid_labels / prox_labels`)
+
+CHALLENGE.md defines possession as controlled, but the truth is mechanical: "takes the team the
+tracking names as owning it", and if a reading disagrees with the public truth the truth is right.
+#12 (a kick hitting a player, 1.3 s) is a possession there. Our DFL labels keep a flagged possession
+only with a controlled action of its team; that removes two thirds of the deep-kick short
+possessions (`kick_shorts.py`, `KS_LABELS=` labels / controlled / mid / prox<m>):
+
+| DFL labels (7 matches) | poss / live min | < 2 s | deep-kick shorts kept (of 12) |
+|---|---|---|---|
+| raw provider flags | 8.4 | 30% | 12 |
+| controlled (ours) | 5.4 | 14% | 4 |
+| middle: any action of the team | 5.8 | 15% | 5 |
+| a team player within 0.7 / 1.0 m | 6.7 / 7.7 | 19% / 26% | 7 / 9 |
+| public / SkillCorner + PFF | 4.2 / 3.9-6.3 | 12% / 10-19% | |
+
+DFL's events mostly don't record these landing touches, and every label that keeps them is far
+choppier than the truth. No retrain. SkillCorner + PFF (labels like the public window's, 198
+deep-kick shorts) are the fairer judge for short-possession work.
+
+### 2026-11-09: why short possessions are missed (`tools/short_miss.py`)
+
+84 external matches: 39% of true possessions are shorter than 5 s (9,052 of 23,417). Base v31_d1:
+
+| bucket | < 2 s | 2-5 s | all short |
+|---|---|---|---|
+| caught (IoU >= 0.5) | 5% | 27% | 19% |
+| boundary: the base has the team there, merged or shifted | 24% | 28% | 26% |
+| decision: a short-net candidate with IoU >= 0.5 exists, not used | 16% | 24% | 21% |
+| candidate with edges off | 18% | 3% | 9% |
+| weak evidence (touch peak or short-net signal, no candidate) | 21% | 12% | 16% |
+| no evidence | 15% | 5% | 9% |
+
+46% of the misses sit inside the other team's possession (the #10 / #12 shape), 32% follow a dead
+ball. Next to a missed short possession the base also misses 64% of the adjacent possessions (29%
+next to a caught one).
+
+### 2026-11-09: inserting by measured gain (user's idea #2; `tools/short_insert.py`)
+
+Each e3 candidate's real effect measured by pasting it alone (the spell, the neighbours it repairs,
+the split damage): 41% help, 24% hurt. A held-out LightGBM regressor predicts it (corr 0.45).
+Greedy insertion by predicted gain, nested 4-fold: SkillCorner +0.0356, PFF +0.0744 (82/2), against
+the old keep check (e3k) +0.0376 / +0.0824 (84/0). No better: the candidates' inputs are the limit,
+not the rule.
+
+### 2026-11-09: e3k on DFL, and the switch (`tools/dfl_short.py`)
+
+DFL as a third provider for the short net (it and the keep check never saw DFL; base v31_d1 from held-
+out pieces: v25 inputs, refine_b2, run vote, the d1 dead head trained without the match):
+
+| DFL match | true poss | v31_d1 | + e3k |
+|---|---|---|---|
+| J03WMX | 356 | 0.560 | 0.598 |
+| J03WN1 | 334 | 0.531 | 0.597 |
+| J03WPY | 279 | 0.637 | 0.641 |
+| J03WOH | 253 | 0.626 | 0.662 |
+| J03WQQ | 240 | 0.654 | 0.639 |
+| J03WOY | 275 | 0.586 | 0.561 |
+| J03WR9 | 253 | 0.630 | 0.603 |
+| mean | | 0.603 | **0.615 (+0.011, 4/3)** |
+
+v31_d1_e3k_kt against v31_kt, per change:
+
+| reference | dead head d1 | + e3k | total |
+|---|---|---|---|
+| public | +0.026 | 0 | **0.800 / 0.939** (v31_kt 0.774 / 0.926) |
+| SkillCorner | +0.007 (18/2) | +0.037 (20/0) | about +0.044 |
+| PFF | +0.017 (62/2) | +0.082 (64/0) | about +0.099 |
+| DFL | -0.016 (1/6) | +0.011 (4/3) | about -0.005 |
+
+**Decision (user): v31_d1_e3k_kt is the submission.** Short possessions caught on the 84 matches 19%
+-> 44% (< 2 s 5% -> 22%, 2-5 s 27% -> 57%); full match 247 possessions (base 225).
+
+**Edge snapping (user's idea #5; `tools/short_edges.py`), rejected.** Boundary misses of e3k (24% of
+short possessions): 55% merged (the spell swallows a missed other-team possession, edges -1.6 / +2.0 s),
+45% shifted. Moving every H/A change point to the short net's start / end-head peak (3 s, P 0.1):
+SkillCorner / PFF nested +0.004 / +0.007 (59/22), but public 0.800 -> 0.653 and DFL -0.016 vs e3k
+(6/7): the heads know only short possessions' edges and pull long ones.
+
+**Rebuilds:** since this session's package installs, rebuilds differ from the saved files by 1-2
+frames outside the public window (v31_kt, v31_d1_e3k_kt); scores identical. The submitted file is the
+2026-11-07 build (af281f36…).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
@@ -3448,7 +3619,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | **v29** (v27 + second-stage network, 12.5 fps, 5 seeds) | 0.697 / 0.882 | DFL 0.571 |
 | realistic DFL (7 matches, folds won) | **v29** | 0.571 vs 0.560 (6/7, passes) | public 0.697 / 0.882 |
-| **submitted file (since 2026-11-06)** | **v31_kt** (v31 on keeper-swap-corrected tracking) | public 0.774 / 0.926 | as v31 elsewhere (27.6 s differ) |
+| **submitted file (since 2026-11-09)** | **v31_d1_e3k_kt** (v31_kt + dead head d1 + short-net spells with the keep check) | public 0.800 / 0.939 | SkillCorner ~+0.044, PFF ~+0.099 (84/0 for e3k), DFL ~-0.005 |
+| previous submission (2026-11-06 to 2026-11-09) | v31_kt (v31 on keeper-swap-corrected tracking) | public 0.774 / 0.926 | as v31 elsewhere (27.6 s differ) |
 | previous submission (2026-10-30 to 2026-11-06) | v31 (v30 + dead-ball head + remove gate with the ball-out rule) | public 0.812 / 0.917 | DFL 0.6295 (v30 0.5755) |
 | previous submission (2026-10-29 to 2026-10-30) | v30 (= v29_bd_b: v29 + touch-run vote + backdating) | public 0.812 / 0.901 | DFL 0.5755 (v29_tr_a 0.5731, v29 0.571) |
 | previous submission (2026-10-28, morning) | v29_tr_a (v29 + touch-run vote) | public 0.727 / 0.886 | DFL 0.573 (v29 0.571, 6/1; nested −0.003) |

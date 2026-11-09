@@ -37,6 +37,8 @@ from pipeline.run import write_submission, RESULTS_DIR  # noqa: E402
 # Params
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "models")
 REPO_DIR = os.path.join(ROOT, "models")
+if os.environ.get("MTAH_TOUCH_TAG"):
+    CACHE_DIR = os.path.join(CACHE_DIR, os.environ["MTAH_TOUCH_TAG"])
 GBM_WEIGHT = 0.5      # blend: P = w * P_gbm + (1 - w) * P_gru
 COSTS = {"switch": 10.0, "to_dead": 25.0, "from_dead": 4.0}
 
@@ -61,6 +63,8 @@ def training(source, qnorm=False):
 
 def model_path(kind, source):
     name = "{}_{}.{}".format(kind, source, "txt" if kind == "gbm" else "pt")
+    if os.environ.get("MTAH_TOUCH_TAG"):      # tools/dfl_data.py: never the deployed models/ files
+        return os.path.join(CACHE_DIR, name)
     repo = os.path.join(REPO_DIR, name)
     return repo if os.path.isfile(repo) else os.path.join(CACHE_DIR, name)
 

@@ -20,6 +20,8 @@ Model: a residual temporal convolution network (kernel 5, dilations 1-16, about 
 context), output logits for none / home touch / away touch per frame.
 """
 
+import os
+
 import numpy as np
 
 from pipeline.features import window_mean
@@ -51,6 +53,8 @@ PATH_AHEAD_M = 25.0
 PATH_NEAR_M = 3.0
 PATH_FIRST_M = 2.5
 MODEL_PATH = "models/touch_net_all.pt"   # trained on all 7 DFL matches; committed for exact rebuilds
+if os.environ.get("MTAH_TOUCH_TAG"):      # a chain rebuilt around another touch network (tools/dfl_data.py)
+    MODEL_PATH = "data/cache/models/{}/touch_net_all.pt".format(os.environ["MTAH_TOUCH_TAG"])
 
 
 def _velocity(x, y):

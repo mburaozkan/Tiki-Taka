@@ -496,6 +496,10 @@ def ours_cmd(args):
             a, b = K.refine_edges(pr, a, b, s_, n)
             seg = new[a:b]
             new[a:b] = np.where(np.isin(seg, ok), H if s_ == 0 else A, seg)
+        if args.snap:                           # tools/short_edges.py snap: change points to the edge heads
+            import short_edges as SE
+            w_s, p_min = (float(v) for v in args.snap.split(":"))
+            new = SE.snap(new, pr, w_s, p_min)
         sp = pm.possession_spells(new, pm.valid_runs(new))
         print("check {} (gen {:g}, keep >= {:g}): {} spells, {} kept; {} possessions (base {}), "
               "frames changed {:.2f}%".format(ktag, gen, thr, len(spells), int(np.sum(pk >= thr)),
@@ -536,6 +540,7 @@ def main():
     ap.add_argument("--ens", default="", help="ensemble for ours, e.g. s1,s1b,s1nz:bz")
     ap.add_argument("--ens-tag", default="e3", help="the held-out ensemble tag the check was trained on")
     ap.add_argument("--check", default="", help="ours: keep/drop check TAG:GEN:THR, e.g. k1:0.6:0.3")
+    ap.add_argument("--snap", default="", help="ours --check: W:P change-point snap (tools/short_edges.py)")
     ap.add_argument("--hid", type=int, default=128)
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--tag", default="s1")

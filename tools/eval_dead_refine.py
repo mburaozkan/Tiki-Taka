@@ -170,14 +170,14 @@ def ours(ex, args, use_pd, beta, gamma, cost):
     from report import brief_line, PUBLIC_GT
     bundles = []
     for seed in range(args.seeds):
-        path = os.path.join(ROOT, "models", "dead_{}_s{}.pt".format(args.tag, seed))
+        path = os.path.join(dd.MODELS_OUT, "dead_{}_s{}.pt".format(args.tag, seed))
         if not os.path.isfile(path):
             refine.save(refine.train([e for g in dd.GAMES for e in ex[g]], seed=seed,
                                      log=lambda *_: None), path)
         bundles.append(refine.load(path))
-    team_bundles = [refine.load(os.path.join(ROOT, "models", "refine_v29_s{}.pt".format(s)))
+    team_bundles = [refine.load(os.path.join(dd.MODELS_OUT, "refine_{}_s{}.pt".format(TEAM_TAG if dd.TOUCH_TAG else "v29", s)))
                     for s in range(TEAM_SEEDS)]
-    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob{}.npz".format(os.environ.get("MTAH_VARIANT", "")))) as c:
+    with np.load(dd.ours_prob_path()) as c:
         hand, prob = c["hand"], c["prob"]
     f = build_features(events=[], touch_model=touch_net.load(os.path.join(ROOT, touch_net.MODEL_PATH)))
     blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]

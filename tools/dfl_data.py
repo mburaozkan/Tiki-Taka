@@ -52,6 +52,20 @@ import possession_metrics as pm  # noqa: E402
 # Params
 SRC = os.path.join(DATA_DIR, "external", "dfl", "raw")
 CACHE = os.path.join(DATA_DIR, "cache", "dfl")
+# MTAH_TOUCH_TAG=<tag>: a whole chain rebuilt around another touch network. Every DFL cache goes to
+# data/cache/dfl_<tag>/ and every model trained for our match to data/cache/models/<tag>/, so nothing
+# made with the deployed touch network is reused or overwritten. Unset: paths exactly as before.
+TOUCH_TAG = os.environ.get("MTAH_TOUCH_TAG", "")
+MODELS_OUT = os.path.join(ROOT, "models")
+if TOUCH_TAG:
+    CACHE = os.path.join(DATA_DIR, "cache", "dfl_" + TOUCH_TAG)
+    MODELS_OUT = os.path.join(DATA_DIR, "cache", "models", TOUCH_TAG)
+
+
+def ours_prob_path():
+    """our match's stage-1 file (tools/in_domain_team.py --ours)."""
+    return os.path.join(DATA_DIR, "cache", "v25_ours_prob{}{}.npz".format(
+        os.environ.get("MTAH_VARIANT", ""), "_" + TOUCH_TAG if TOUCH_TAG else ""))
 FPS = 25
 PITCH = (105.0, 68.0)
 GAMES = ("J03WMX", "J03WN1", "J03WPY", "J03WOH", "J03WQQ", "J03WOY", "J03WR9")
@@ -155,18 +169,60 @@ def event_lag(ball, evts):
     return int(lags[int(np.argmax(score))])
 
 
-def controlled_labels(flags, evts):
-    """flags with possessions that have no controlled action of their team handed to a neighbour."""
+def controlled_labels(flags, evts, any_action=False):
+    """flags with possessions that have no controlled action of their team handed to a neighbour.
+    any_action (the "middle" labels, mid_labels): any on-ball action of the team keeps it, controlled
+    or not (headers, clearances, blocks at a landing), since the competition's truth is the
+    provider's mechanical owner flag (CHALLENGE.md) and keeps such touches."""
     n = len(flags)
     tol = int(EVENT_TOL_S * FPS)
     near = {}
     for team in (0, 1):
         mark = np.zeros(n + 1, np.int64)
         for f, t, _, controlled in evts:
-            if controlled and t == team:
+            if (controlled or any_action) and t == team:
                 mark[max(0, f - tol)] += 1
                 mark[min(n, f + tol + 1)] -= 1
         near[team] = np.cumsum(mark)[:n] > 0
+    out = flags.copy()
+    runs = pm.valid_runs(flags)
+    for _ in range(10):
+        changed = False
+        segs = pm.segments(out, runs)
+        for i, (a, b, k) in enumerate(segs):
+            if k not in (H, A) or near[0 if k == H else 1][a:b].any():
+                continue
+            before = segs[i - 1][2] if i > 0 and segs[i - 1][1] == a else D
+            after = segs[i + 1][2] if i + 1 < len(segs) and segs[i + 1][0] == b else D
+            new = before if before in (H, A) else after if after in (H, A) else k
+            if new != k:
+                out[a:b] = new
+                changed = True
+        if not changed:
+            break
+    return out
+
+
+def mid_labels(d):
+    """middle labels for a loaded match: controlled_labels with any_action=True."""
+    evts = [(int(f), int(t), "", bool(c)) for f, t, c in d["events"]]
+    return controlled_labels(d["labels"], evts, any_action=True)
+
+
+PROX_M = 1.0
+
+
+def prox_labels(d, prox_m=PROX_M):
+    """flags with possessions in which no player of their team came within prox_m of the (sharp)
+    ball handed to a neighbour, as controlled_labels does: a tracking-only middle definition."""
+    flags = d["labels"]
+    bx = d["ball"][:, 0].astype(np.float64) * PITCH[0]
+    by = d["ball"][:, 1].astype(np.float64) * PITCH[1]
+    near = {}
+    for team in (0, 1):
+        P = d["players"][:, d["team"] == team]
+        dist = np.hypot(P[:, :, 0] * PITCH[0] - bx[:, None], P[:, :, 1] * PITCH[1] - by[:, None])
+        near[team] = np.nanmin(np.where(np.isnan(dist), np.inf, dist), axis=1) <= prox_m
     out = flags.copy()
     runs = pm.valid_runs(flags)
     for _ in range(10):

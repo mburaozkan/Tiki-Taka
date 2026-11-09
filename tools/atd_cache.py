@@ -104,7 +104,7 @@ def load_arrays(source=DEFAULT_SOURCE, game=GAME, data_dir=None, rebuild=False, 
                                                              blocks, GAMES[game]["pitch"])
     if os.environ.get("MTAH_BALL"):                  # e.g. yolo: ball x / y from tools/yolo_ball.py clean
         yb = np.load(os.path.join(CACHE_DIR, "yolo", "ball_clean_{}.npy".format(
-            os.environ.get("MTAH_BALL_MODEL", "bambezius"))))
+            os.environ.get("MTAH_BALL_MODEL", "bambezius") + os.environ.get("MTAH_BALL_TAG", ""))))
         arrays["ball"] = arrays["ball"].copy()
         arrays["ball"][:len(yb), :2] = yb
     if "kf" in variant():

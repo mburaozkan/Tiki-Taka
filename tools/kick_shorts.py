@@ -49,7 +49,9 @@ def main():
 
     for game in dfl_data.GAMES:
         d = dfl_data.load(game)
-        lab = d[os.environ.get("KS_LABELS", "controlled")].astype(np.int64)
+        key = os.environ.get("KS_LABELS", "controlled")
+        lab = (dfl_data.mid_labels(d) if key == "mid" else dfl_data.prox_labels(d, float(key[4:]))
+               if key.startswith("prox") else d[key]).astype(np.int64)
         ball = d["ball"]
         pl = d["players"]
         team = d["team"]

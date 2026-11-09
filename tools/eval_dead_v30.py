@@ -159,13 +159,12 @@ def ours(beta, gamma, cost, name, gate=None, args=None):
     from report import brief_line, PUBLIC_GT
     from possession_view import signals
     s = signals()
-    with np.load(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob{}.npz".format(
-            os.environ.get("MTAH_VARIANT", "")))) as c:
+    with np.load(dd.ours_prob_path()) as c:
         prob = c["prob"]
     hand, f, cols = s["hand"], s["f"], s["cols"]
     blk = [(a, b + 1) for _, a, b in half_video_blocks(GAME)]
     p1 = stage1(prob, f)
-    bundles = [refine.load(os.path.join(ROOT, "models", "dead_{}_s{}.pt".format(DEAD_TAG, k)))
+    bundles = [refine.load(os.path.join(dd.MODELS_OUT, "dead_{}_s{}.pt".format(DEAD_TAG, k)))
                for k in range(DEAD_SEEDS)]
     refine.BIN = bundles[0][0].cfg["BIN"]
     xd = (refine.dead_inputs(p1, hand, f, cols, False, False),

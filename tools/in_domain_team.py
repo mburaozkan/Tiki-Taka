@@ -247,7 +247,7 @@ def ours(weights, source="strong"):
         combined = combine(prob, p_po, weak, w)
         codes = learned.decode_hybrid(hand, combined, blks, 10.0)
         if stem == "v25" and w == 0.5:      # the submission's inputs, for tools/eval_mbr.py
-            np.savez(os.path.join(dd.DATA_DIR, "cache", "v25_ours_prob{}.npz".format(os.environ.get("MTAH_VARIANT", ""))), hand=hand,
+            np.savez(dd.ours_prob_path(), hand=hand,
                      prob=combined)
         path = write_submission(os.path.join(RESULTS_DIR, "{}_w{:g}.csv".format(stem, w)), codes)
         reason = pm.validate_submission(pm.read_label_csv(path), GAMES[GAME]["n_video_frames"])

@@ -43,6 +43,8 @@ TRAIN_VERSIONS = 2
 COST_GRID = {"switch": (6.0, 10.0, 15.0, 20.0, 30.0), "to_dead": (6.0, 10.0, 15.0),
              "from_dead": (2.0, 4.0)}
 MODEL_DIR = os.path.join(dd.DATA_DIR, "cache", "models")
+if dd.TOUCH_TAG:                     # touch networks of a rebuilt chain (tools/dfl_data.py)
+    MODEL_DIR = os.path.join(MODEL_DIR, dd.TOUCH_TAG)
 PROBS = os.path.join(dd.CACHE, "learned_probs_anim.npz")
 HYBRID_SWITCH = (2.0, 4.0, 6.0, 10.0, 15.0, 20.0)
 
