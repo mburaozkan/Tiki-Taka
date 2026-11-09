@@ -184,6 +184,11 @@ def dfl_cmd(args):
             sp.append((a, b, H if s_ == 0 else A))
         mx = mixed(cpr, base, blk)
         r = [stats(lab, x) for x in (base, paste(base, sp), mx, paste(mx, sp))]
+        os.makedirs(os.path.join(ROOT, "data", "cache", "cn_e3k"), exist_ok=True)
+        np.savez_compressed(os.path.join(ROOT, "data", "cache", "cn_e3k", "dfl_{}.npz".format(g)), lab=lab, base=base,
+                            final=paste(mx, sp), cpr=cpr.astype(np.float16), spr=pr.astype(np.float16),
+                            tph=f["touch_p_home"].astype(np.float16), tpa=f["touch_p_away"].astype(np.float16),
+                            period=d["period"])
         rows.append(("dfl", g, np.array(r, float)))
         print("  {}: base {:.4f}  e3k {:.4f}  mix {:.4f}  mix+e3k {:.4f}".format(g, *[x[0] for x in r]), flush=True)
     report(rows, ("dfl",))

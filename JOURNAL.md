@@ -3631,6 +3631,23 @@ e3k inserts short spells, the change net moves turnovers and dead-ball edges. DF
 **Decision (user): v31_d1_c1chdlm_e3k_kt is the submission** (`tools/cn_e3k.py ours`, after
 `short_net.py ours ... --name v31_d1_e3k_rb` saved the kept spells).
 
+### 2026-11-09: where the submission still loses on DFL (`tools/dfl_loss.py`), and two rule fixes
+
+Held out, 7 matches, submission 0.6343. Oracles (each alone): dead / live perfect +0.030, **team perfect
+on live frames +0.210**, both +0.291. True possessions (1,990): caught 60%; we call them D 16%, give them
+to the other team 12%, merge 6%, shift / split 6%. By length caught 11% (< 2 s), 42% (2-5 s), 65%
+(5-10 s), 88% (>= 10 s); under 2 s 34% are called D and 39% go to the other team. Of the 800 missed,
+66% have a signal at the true start (touch peak of that team 39%, change-net head toward it 55%,
+short-net start head 26%); called D 48% (56% right after a dead ball), other team 67%, merged /
+shifted 86-89%.
+
+Two rules on the submission's output (`tools/restart_cut.py`), both rejected:
+- **End our D at the change net's restart peak** (P 0.2-0.6, with / without a touch peak): DFL at most
+  +0.0025 (P 0.6, 6/1); SkillCorner / PFF nested -0.0063 / -0.0015 (23/61).
+- **Accept signalled turnovers** (turnover head toward Y >= P with a touch peak of Y, Y until the head
+  points back or our next change, cap 10 s): short catches < 2 s 11% -> 21%, but DFL 0.597-0.613 (1/6).
+Hand rules on these signals fix some misses and break more.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
