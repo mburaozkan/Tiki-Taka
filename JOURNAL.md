@@ -3672,6 +3672,13 @@ c1dl 0.52 passes the adopt rule (most matches up, public -0.013); c1dl 0.4 is up
 but public -0.17 (beyond the rule). Decision open (user); files `v31_d1_c1dlm052_e3k_kt.csv`,
 `v31_d1_c1dlm04_e3k_kt.csv` written.
 
+**Where c1dl 0.4 loses the public window** (`spell_table.py`, vs the submission): #7 (3.2 s, A) is
+missed, so #6 runs 45.7 s on into #8 (#6 IoU 0.76 -> 0.35, #7 0.63 -> miss, #8 0.98 -> 0.52); #15 shifts
+(0.73 -> 0.41); #9 / #11 / #13 ends run on (0.47 / 0.38 / 0.09 -> 0.36 / 0.29 / 0.07); small edge losses at
+#4 / #5 / #16 / #17. As noted on 2026-11-08 for c1dl, its turnover head is weak at #7 and it overrules the
+base's switch. Next (with the user): c1dl 0.4 with the base's own changes added to the change heads
+(`mix_pr` beta 0.5 / 1), so confident base turnovers like #7 survive; check public, DFL, SkillCorner / PFF.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
