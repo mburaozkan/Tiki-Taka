@@ -489,13 +489,17 @@ def ours_cmd(args):
         pk = bst.predict(xgb.DMatrix(np.array(rows, np.float32))) if rows else np.zeros(0)
         new = base.copy()
         ok = (H, A, D) if args.over_d else (H, A)
+        kept = []
         for i in np.argsort(pk):
             if pk[i] < thr:
                 continue
             a, b, s_ = spells[i]
             a, b = K.refine_edges(pr, a, b, s_, n)
+            kept.append((a, b, H if s_ == 0 else A))
             seg = new[a:b]
             new[a:b] = np.where(np.isin(seg, ok), H if s_ == 0 else A, seg)
+        if args.name:                           # the kept spells, in paste order (tools/cn_e3k.py)
+            np.save(os.path.join(OUT, "ours_spells_{}.npy".format(args.name)), np.array(kept, np.int64).reshape(-1, 3))
         if args.snap:                           # tools/short_edges.py snap: change points to the edge heads
             import short_edges as SE
             w_s, p_min = (float(v) for v in args.snap.split(":"))
