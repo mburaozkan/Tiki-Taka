@@ -3648,6 +3648,30 @@ Two rules on the submission's output (`tools/restart_cut.py`), both rejected:
   points back or our next change, cap 10 s): short catches < 2 s 11% -> 21%, but DFL 0.597-0.613 (1/6).
 Hand rules on these signals fix some misses and break more.
 
+### 2026-11-09 (night): change-net variants x mix weight, each + e3k (`tools/cn_sweep.py`)
+
+No training: c1dl, c1dlbd, c1chdl mixed with the base at alpha (weight on the base) 0.3-0.6, e3k's
+spells on top. Public / DFL (held out; submission = c1chdl 0.5: 0.800 / 0.6343):
+
+| | alpha 0.3 | 0.4 | 0.5 | 0.52 | 0.55 | 0.6 |
+|---|---|---|---|---|---|---|
+| c1dl | 0.637 / 0.647 | 0.629 / 0.653 | 0.671 / 0.644 | 0.787 / 0.637 | 0.787 / 0.620 | 0.787 / 0.613 |
+| c1dlbd | 0.662 / 0.654 | 0.648 / **0.656 (7/0)** | 0.733 / 0.650 | 0.733 / 0.641 | 0.733 / 0.622 | 0.787 / 0.613 |
+| c1chdl | 0.586 / 0.643 | 0.720 / 0.646 | **0.800 / 0.634** | 0.800 / 0.626 | 0.800 / 0.614 | 0.800 / 0.611 |
+
+A tight see-saw: every mix that keeps public >= 0.787 leaves DFL at or below the submission, every
+mix that lifts DFL drops public to <= 0.73. SkillCorner / PFF for the two candidates:
+
+| + e3k | public | SkillCorner | PFF | DFL | up / down |
+|---|---|---|---|---|---|
+| submission (c1chdl 0.5) | 0.800 | 0.6589 | 0.6594 | 0.6343 | |
+| c1dl 0.52 | 0.787 | 0.6622 (17/3) | 0.6798 (64/0) | 0.6372 (3/4) | 84 / 7 |
+| c1dl 0.4 | 0.629 | 0.6917 (20/0) | 0.7220 (64/0) | 0.6526 (7/0) | 91 / 0 |
+
+c1dl 0.52 passes the adopt rule (most matches up, public -0.013); c1dl 0.4 is up everywhere external
+but public -0.17 (beyond the rule). Decision open (user); files `v31_d1_c1dlm052_e3k_kt.csv`,
+`v31_d1_c1dlm04_e3k_kt.csv` written.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
