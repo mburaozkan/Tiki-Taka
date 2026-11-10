@@ -3764,6 +3764,25 @@ combination.
 **Decision (user, 2026-11-10): v31_d1_c1dldm05_e3k_kt is the submission.** Next: an airborne / loose-ball
 input for the other-team misses.
 
+### 2026-11-10: loose-ball memory inputs (c1dldl, `tools/cn_loose.py`): rejected
+
+For the loose / airborne-ball misses: per team, seconds since the team last controlled the ball
+(cn_duel's keep >= 0.2 s; capped at 10 s, memory through gaps and dead ball, reset each period) and
+whether it had the latest control; on top of c1dld's inputs (`CN_X=xdl SN_EXTRA=ctl,keep,since,last
+CN_DFL=5`). Held out, + e3k, up / down vs the submission (c1dld 0.5):
+
+| + e3k | public | SkillCorner | PFF | DFL |
+|---|---|---|---|---|
+| submission c1dld 0.5 | 0.787 / 0.934 | 0.6699 | 0.6916 | 0.6438 |
+| c1dldl 0.5 | 0.747 / 0.934 | 0.6712 (11/9) | 0.6921 (34/29) | 0.6444 (4/2) |
+| c1dldl 0.45 | 0.720 | 0.6835 | 0.7129 | 0.6534 (7/0) |
+| c1dldl 0.4 | 0.733 | 0.6900 | 0.7248 | 0.6559 (7/0) |
+| (c1dld 0.45 / 0.4) | 0.731 / 0.690 | 0.6840 / 0.6923 | 0.7121 / 0.7251 | 0.6491 / 0.6518 |
+
+Level with c1dld outside at equal alpha (DFL +0.000 to +0.004, SkillCorner / PFF +-0.002), public lower
+at every alpha. The net already reads "who had it last" from keep over time; the explicit memory adds
+nothing it can use. Submission unchanged. (`cn_ours_bd.py --loose` runs it on our match.)
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

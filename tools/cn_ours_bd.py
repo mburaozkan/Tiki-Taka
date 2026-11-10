@@ -2,6 +2,7 @@
 
     $env:MTAH_VARIANT="_kt"; python tools/cn_ours_bd.py [--tag c1dlbd] [--duel]
     $env:MTAH_VARIANT="_kt"; python tools/cn_ours_bd.py --tag c1dld --duel --nofill   # original ball
+    $env:MTAH_VARIANT="_kt"; python tools/cn_ours_bd.py --tag c1dldl --duel --loose --nofill
 
 Builds our match's change-net inputs exactly as change_net.ours_setup, then (as for the external
 sets) rewrites the gap frames of the ball-derived inputs from the ball net trained on all 7 DFL
@@ -28,10 +29,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="c1dlbd")
     ap.add_argument("--duel", action="store_true")
+    ap.add_argument("--loose", action="store_true", help="also the loose-ball memory inputs (cn_loose.py; needs --duel)")
     ap.add_argument("--nofill", action="store_true", help="keep the original ball (no ball net in the gaps)")
     args = ap.parse_args()
     if args.duel:
-        os.environ["SN_EXTRA"] = "ctl,keep"
+        os.environ["SN_EXTRA"] = "ctl,keep,since,last" if args.loose else "ctl,keep"
     import torch
     import short_net as S
     import change_net as C
@@ -79,7 +81,11 @@ def main():
         by = xo[:, old.index("by")]
         un = (xo[:, old.index("seen")] < 0.5) & (bx == 0) & (by == 0)
         ex2 = CD.duel_channels(d["players"], d["team"], np.where(un, np.nan, bx), np.where(un, np.nan, by), pitch)
-        xo = np.stack([ex2[nm] if nm[2:] in CD.EXTRA and nm[:2] in ("h_", "a_") else xo[:, old.index(nm)]
+        if args.loose:
+            import cn_loose as CL
+            starts = [a for a, _ in blk]
+            ex2.update(CL.loose_channels(ex2["h_keep"], ex2["a_keep"], starts))
+        xo = np.stack([ex2[nm] if nm[:2] in ("h_", "a_") and nm in ex2 else xo[:, old.index(nm)]
                        for nm in S.channel_names()], axis=1)
     ck = torch.load(os.path.join(C.MODELS, "{}_all.pt".format(args.tag)), weights_only=False)
     model = S.make_model(ck["n_in"], ck.get("hid", 128)).cuda()
