@@ -1,6 +1,7 @@
 """Duel inputs for the change net: who runs with the ball, and for how long. Aggregate only.
 
     python tools/cn_duel.py prep [--src xb] [--out xbd]
+    python tools/cn_duel.py prep --src base --out xd     # on the original ball (c1dld, 2026-11-10)
 
 Two channels per team, appended to the team block (short_net SN_EXTRA=ctl,keep):
   ctl   |velocity of the team's nearest player - ball velocity| (m/s, 0-15; centred 5-frame
@@ -71,7 +72,15 @@ def one(job):
         return None
     import dfl_data as dd
     import turnover_cls as T
-    x = np.load(os.path.join(C.OUT, src, "{}_{}.npy".format(name, g))).astype(np.float32)
+    if src == "base":                      # the change net's default inputs (no ball fill)
+        if name == "dfl":
+            import cn_dfl
+            with np.load(cn_dfl.path(g)) as z:
+                x = z["x"].astype(np.float32)
+        else:
+            x = np.load(os.path.join(S.OUT, "in_{}_{}.npy".format(name, g))).astype(np.float32)
+    else:
+        x = np.load(os.path.join(C.OUT, src, "{}_{}.npy".format(name, g))).astype(np.float32)
     old = S.SHARED + ["h_" + k for k in S.BASE_TEAM] + ["a_" + k for k in S.BASE_TEAM]
     if name == "dfl":
         import cn_dfl

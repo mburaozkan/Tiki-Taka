@@ -3729,6 +3729,17 @@ speed, players over 4 m/s). On unseen frames they separate live from dead alone 
 other two providers: 0.855 -> 0.851, 0.915 -> 0.869, 0.953 -> 0.951). The dead head already carries
 player motion; not trained. Next: the "other team" misses (ball mostly seen).
 
+**"Other team" misses (timelines, DFL): loose and airborne balls.** In the cases read, a clearance or
+long ball is in the air 1.5-3 s, a throw-in rolls along the line beside a defender, or a contested
+header goes up: DFL keeps possession with the team that last controlled the ball until the other
+team controls it; we hand it over early to whoever is nearest / receiving. A plain "team of the last
+controlled touch" rule (cn_duel's keep >= 0.2 / 0.4 s) agrees with the truth on 77-80% of live frames
+(ours 92%) and on only 40% of our wrong-team frames: no rule. The control cue has to come through the
+net. c1dlb (ball net in gaps) alone was flat on DFL (0.6499), c1dlbd (+ duel inputs ctl / keep) 0.6659:
+the gain was the duel inputs, while the ball fill is what broke our match (56% D). Training **c1dld** =
+c1dl + duel inputs on the original ball, no fill (`cn_duel.py prep --src base --out xd`,
+`CN_X=xd SN_EXTRA=ctl,keep CN_DFL=5 change_net.py train --tag c1dld --folds 0 1 2 3 all`).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
