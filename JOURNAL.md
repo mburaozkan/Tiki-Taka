@@ -3740,6 +3740,26 @@ the gain was the duel inputs, while the ball fill is what broke our match (56% D
 c1dl + duel inputs on the original ball, no fill (`cn_duel.py prep --src base --out xd`,
 `CN_X=xd SN_EXTRA=ctl,keep CN_DFL=5 change_net.py train --tag c1dld --folds 0 1 2 3 all`).
 
+**c1dld (duel inputs on the original ball): same strength outside, sturdier on our match.** Held out
+(folds; DFL inside the folds), each + e3k, up / down vs the submission (c1dl 0.52):
+
+| + e3k | public | SkillCorner | PFF | DFL |
+|---|---|---|---|---|
+| submission c1dl 0.52 | 0.787 / 0.937 | 0.6622 | 0.6798 | 0.6372 |
+| c1dl 0.5 | 0.671 / 0.933 | 0.6712 (20/0) | 0.6910 (62/1) | 0.6435 (7/0) |
+| **c1dld 0.5** | **0.787 / 0.934** | **0.6699 (17/1)** | **0.6916 (59/5)** | **0.6438 (6/1)** |
+| c1dld 0.45 | 0.731 | 0.6840 (19/1) | 0.7121 (64/0) | 0.6491 (6/1) |
+| c1dld 0.4 | 0.690 | 0.6923 | 0.7251 | 0.6518 |
+| c1dld 0.52 | 0.787 / 0.938 | 0.6611 (7/12) | 0.6807 (35/29) | 0.6349 (3/4) |
+
+At the same alpha c1dld and c1dl are level outside (+-0.003), so the duel inputs do not add much on
+the original ball (the c1dlbd gain of 2026-11-08 needed the filled ball). But c1dld keeps public at a
+lower alpha: 0.787 at 0.5 (c1dl 0.671), 0.690 at 0.4 (c1dl 0.629). **c1dld 0.5 + e3k passes the adopt
+rule: 82 / 7 over the submission, public 0.787 (second score 0.937 -> 0.934).** Our match run:
+`cn_ours_bd.py --tag c1dld --duel --nofill` (new option), then `cn_sweep.py ours --tags c1dld --alphas 0.5`
+(file `v31_d1_c1dldm05_e3k_kt.csv`). `cn_sweep.py --ref tag:alpha` counts up / down against any
+combination. Decision open (user).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

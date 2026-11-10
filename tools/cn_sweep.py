@@ -57,15 +57,19 @@ def ext_match(job):
     return name, g, np.array(res, float)
 
 
+REF = None   # (tag, alpha, beta) whose column the up / down counts compare against (--ref); None = submission
+
+
 def show(rows, sets, cmb, folds=None):
     names = np.array([r[0] for r in rows])
     arr = np.stack([r[2] for r in rows])
+    ri = 0 if REF is None else 1 + cmb.index(REF)
     labels = ["submission (c1chdl 0.5)"] + [label(*c) for c in cmb]
     for j, lb in enumerate(labels):
         parts = []
         for s in sets:
             v = arr[names == s, j, 0]
-            d = v - arr[names == s, 0, 0]
+            d = v - arr[names == s, ri, 0]
             parts.append("{:.4f} {:>3}/{:<3}".format(v.mean(), int(np.sum(d > 1e-9)), int(np.sum(d < -1e-9))))
         t = arr[:, j, 1:].sum(axis=0)
         print("{:<34} ".format(lb) + " ".join("{:>18}".format(p) for p in parts)
@@ -153,7 +157,13 @@ def main():
     ap.add_argument("--alphas", nargs="+", type=float, default=[0.3, 0.4, 0.5, 0.6])
     ap.add_argument("--betas", nargs="+", type=float, default=[0.0])
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--ref", help="tag:alpha[:beta], up / down counted against this combination")
     args = ap.parse_args()
+    if args.ref:
+        global REF
+        v = args.ref.split(":")
+        REF = (v[0], float(v[1]), float(v[2]) if len(v) > 2 else 0.0)
+        print("up / down vs {} alpha {:g}".format(REF[0], REF[1]))
     {"ext": ext_cmd, "dfl": dfl_cmd, "ours": ours_cmd}[args.cmd](args)
 
 

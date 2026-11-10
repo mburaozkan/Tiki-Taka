@@ -1,6 +1,7 @@
 """A change net with the ball net in the gaps (+ duel inputs) on our match. Aggregate only.
 
     $env:MTAH_VARIANT="_kt"; python tools/cn_ours_bd.py [--tag c1dlbd] [--duel]
+    $env:MTAH_VARIANT="_kt"; python tools/cn_ours_bd.py --tag c1dld --duel --nofill   # original ball
 
 Builds our match's change-net inputs exactly as change_net.ours_setup, then (as for the external
 sets) rewrites the gap frames of the ball-derived inputs from the ball net trained on all 7 DFL
@@ -27,6 +28,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="c1dlbd")
     ap.add_argument("--duel", action="store_true")
+    ap.add_argument("--nofill", action="store_true", help="keep the original ball (no ball net in the gaps)")
     args = ap.parse_args()
     if args.duel:
         os.environ["SN_EXTRA"] = "ctl,keep"
@@ -62,12 +64,14 @@ def main():
     x = S.frame_inputs(c, f, d, ball, pitch, ex["pdead"], sign)
     S.TEAM = full_team
     old = S.SHARED + ["h_" + k for k in S.BASE_TEAM] + ["a_" + k for k in S.BASE_TEAM]
-    filled, _ = N.fill(N.load("all"), ball, d["players"], d["team"], blk, pitch)
-    gap = ~np.isfinite(ball[:, 0]) & np.isfinite(filled[:, 0])
-    gm = CB.geom(d["players"], d["team"], filled, pitch, sign)
     xo = x.copy()
-    for k, v in gm.items():
-        xo[gap, old.index(k)] = v[gap]
+    gap = np.zeros(n, bool)
+    if not args.nofill:
+        filled, _ = N.fill(N.load("all"), ball, d["players"], d["team"], blk, pitch)
+        gap = ~np.isfinite(ball[:, 0]) & np.isfinite(filled[:, 0])
+        gm = CB.geom(d["players"], d["team"], filled, pitch, sign)
+        for k, v in gm.items():
+            xo[gap, old.index(k)] = v[gap]
     print("our match: {} frames, ball unseen {:.1%}, filled {:.1%}".format(n, np.mean(~np.isfinite(ball[:, 0])), gap.mean()))
     if args.duel:
         import cn_duel as CD
