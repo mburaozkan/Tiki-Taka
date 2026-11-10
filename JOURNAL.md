@@ -3679,6 +3679,29 @@ missed, so #6 runs 45.7 s on into #8 (#6 IoU 0.76 -> 0.35, #7 0.63 -> miss, #8 0
 base's switch. Next (with the user): c1dl 0.4 with the base's own changes added to the change heads
 (`mix_pr` beta 0.5 / 1), so confident base turnovers like #7 survive; check public, DFL, SkillCorner / PFF.
 
+### 2026-11-10: base turnovers protected in the change-net mix (beta): rejected
+
+`tools/cn_sweep.py --betas` (new option; `cn_e3k.mixed` passes beta to `change_net.mix_pr`): the base's
+own changes added to the change heads (max with beta x a sigma-2 bump), so a confident base turnover
+like #7 should survive the mix. No training. public / SkillCorner / PFF / DFL, all + e3k:
+
+| + e3k | public | SkillCorner | PFF | DFL |
+|---|---|---|---|---|
+| submission (c1chdl 0.5) | 0.800 | 0.6589 | 0.6594 | 0.6343 |
+| c1dl 0.4 | 0.629 | 0.6917 (20/0) | 0.7220 (64/0) | 0.6526 (7/0) |
+| c1dl 0.4 beta 0.5 / 1 | 0.629 / 0.629 | 0.6917 / 0.6908 | 0.7209 / 0.7200 | 0.6526 / 0.6518 |
+| c1dlbd 0.4 | 0.648 | 0.6937 (20/0) | 0.7263 (64/0) | 0.6557 (7/0) |
+| c1dlbd 0.4 beta 0.5 / 1 | 0.662 / 0.662 | 0.6921 / 0.6914 | 0.7249 / 0.7239 | 0.6570 / 0.6572 |
+| c1dl 0.52 | 0.787 | 0.6622 (17/3) | 0.6798 (64/0) | 0.6372 (3/4) |
+| c1dl 0.52 beta 0.5 / 1 | 0.787 / 0.800 | 0.6550 / 0.6526 (5/15) | 0.6671 / 0.6629 (34/28) | 0.6295 / 0.6266 (1/6) |
+| c1dlbd 0.52 beta 1 | 0.800 | 0.6531 (3/17) | 0.6638 (37/26) | 0.6258 (1/6) |
+
+At alpha 0.4 beta changes nothing on public (#7 is still missed: the class head, not the change
+heads, decides there), so the see-saw stays. At alpha 0.52 beta 1 brings public back to 0.800 but
+gives up the external gain (below the submission on SkillCorner and DFL). Rejected. Open (user):
+submission stays, or c1dl 0.52 (passes the adopt rule) or c1dl / c1dlbd 0.4 (up on all 91 external,
+public -0.15 / -0.17).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

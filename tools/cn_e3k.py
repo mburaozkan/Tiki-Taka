@@ -37,9 +37,9 @@ def paste(codes, spells):
     return out
 
 
-def mixed(pr, base, blk, alpha=None):
+def mixed(pr, base, blk, alpha=None, beta=0.0):
     import change_net as C
-    q, _ = C.mix_pr(pr, base, blk, ALPHA if alpha is None else alpha, 0.0)
+    q, _ = C.mix_pr(pr, base, blk, ALPHA if alpha is None else alpha, beta)
     return C.viterbi(q, blk, W, BIAS)
 
 

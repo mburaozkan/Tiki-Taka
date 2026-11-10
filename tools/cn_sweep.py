@@ -2,10 +2,12 @@
 
     python tools/cn_sweep.py ext  [--tags c1dl c1dlbd c1chdl] [--alphas 0.3 0.4 0.5 0.6]
     python tools/cn_sweep.py dfl  [...]     # needs data/cache/cn_e3k/dfl_*.npz (tools/cn_e3k.py dfl)
-    python tools/cn_sweep.py ours [...]     # public window; writes v31_d1_<tag>m<alpha>_e3k
+    python tools/cn_sweep.py ours [...]     # public window; writes v31_d1_<tag>m<alpha>[b<beta>]_e3k
+    --betas 0 0.5 1   base's own changes added to the change heads (change_net.mix_pr beta), so
+                      confident base turnovers survive the mix
 
 Same construction as tools/cn_e3k.py (base v31_d1, change_net.mix_pr alpha, beta 0, viterbi w 1 bias -3,
-then e3k's kept spells pasted). alpha = weight on the base's codes (0.5 = the submission for c1chdl).
+then e3k's kept spells pasted; beta 0 unless --betas). alpha = weight on the base's codes (0.5 = the submission for c1chdl).
 Held-out change-net predictions everywhere (external folds; DFL keys of the tag's pred file, else
 the all-84 model never saw DFL). Reports spellF1 per set vs the submission (c1chdl 0.5 + e3k).
 """
@@ -24,7 +26,11 @@ os.environ.setdefault("TC_ROWS", "v2")
 
 
 def combos(args):
-    return [(t, a) for t in args.tags for a in args.alphas]
+    return [(t, a, b) for t in args.tags for a in args.alphas for b in args.betas]
+
+
+def label(t, a, b):
+    return "{} alpha {:g}{} + e3k".format(t, a, " beta {:g}".format(b) if b else "")
 
 
 def ext_match(job):
@@ -42,19 +48,19 @@ def ext_match(job):
     lab = c["labels"]
     sp = CE.ext_spells(name, g, len(base))
     preds = {}
-    for t in {t for t, _ in cmb} | {"c1chdl"}:
+    for t in {t for t, _, _ in cmb} | {"c1chdl"}:
         with np.load(os.path.join(C.OUT, "pred_{}.npz".format(t))) as z:
             preds[t] = z["{}_{}".format(name, g)].astype(np.float32)
     res = [stats(lab, CE.paste(CE.mixed(preds["c1chdl"], base, blk, 0.5), sp))]
-    for t, a in cmb:
-        res.append(stats(lab, CE.paste(CE.mixed(preds[t], base, blk, a), sp)))
+    for t, a, b in cmb:
+        res.append(stats(lab, CE.paste(CE.mixed(preds[t], base, blk, a, b), sp)))
     return name, g, np.array(res, float)
 
 
 def show(rows, sets, cmb, folds=None):
     names = np.array([r[0] for r in rows])
     arr = np.stack([r[2] for r in rows])
-    labels = ["submission (c1chdl 0.5)"] + ["{} alpha {:g} + e3k".format(t, a) for t, a in cmb]
+    labels = ["submission (c1chdl 0.5)"] + [label(*c) for c in cmb]
     for j, lb in enumerate(labels):
         parts = []
         for s in sets:
@@ -62,7 +68,7 @@ def show(rows, sets, cmb, folds=None):
             d = v - arr[names == s, 0, 0]
             parts.append("{:.4f} {:>3}/{:<3}".format(v.mean(), int(np.sum(d > 1e-9)), int(np.sum(d < -1e-9))))
         t = arr[:, j, 1:].sum(axis=0)
-        print("{:<26} ".format(lb) + " ".join("{:>18}".format(p) for p in parts)
+        print("{:<34} ".format(lb) + " ".join("{:>18}".format(p) for p in parts)
               + " | caught <2s {:>5.1%} 2-5s {:>5.1%} | pred/true {:.2f}".format(t[1] / t[0], t[3] / t[2], t[5] / t[4]),
               flush=True)
 
@@ -94,11 +100,13 @@ def dfl_cmd(args):
         e = np.flatnonzero(np.diff(np.concatenate(([0], diff.astype(np.int8), [0]))))
         sp = [(a, b, int(final[a])) for a, b in zip(e[::2], e[1::2])]
         res = [stats(lab, final)]
-        for t, a in cmb:
-            pr = cn_dfl.heldout(t, g)
-            if pr is None:
-                pr = cn_dfl.predict_tag(t, zc["x"])
-            res.append(stats(lab, CE.paste(CE.mixed(pr, base, blk, a), sp)))
+        prs = {}
+        for t, a, b in cmb:
+            if t not in prs:
+                prs[t] = cn_dfl.heldout(t, g)
+                if prs[t] is None:
+                    prs[t] = cn_dfl.predict_tag(t, zc["x"])
+            res.append(stats(lab, CE.paste(CE.mixed(prs[t], base, blk, a, b), sp)))
         rows.append(("dfl", g, np.array(res, float)))
     show(rows, ("dfl",), cmb)
 
@@ -109,15 +117,16 @@ def ours_cmd(args):
     import short_net as S
     import ours_chain as oc
     sp = [tuple(int(v) for v in r) for r in np.load(os.path.join(S.OUT, "ours_spells_v31_d1_e3k_rb.npy"))]
-    for t, a in combos(args):
+    for t, a, b in combos(args):
         p = os.path.join(C.OUT, "ours_{}.npz".format(t))
         if not os.path.isfile(p):
             print("  no ours_{}.npz".format(t))
             continue
         z = np.load(p)
         pr, base, blk = z["pr"].astype(np.float32), z["base"], [tuple(b) for b in z["blk"]]
-        out = CE.paste(CE.mixed(pr, base, blk, a), sp)
-        print("  " + str(oc.write_and_score(out, "v31_d1_{}m{:g}_e3k".format(t, a).replace(".", ""))), flush=True)
+        out = CE.paste(CE.mixed(pr, base, blk, a, b), sp)
+        nm = "v31_d1_{}m{:g}{}_e3k".format(t, a, "b{:g}".format(b) if b else "").replace(".", "")
+        print("  " + str(oc.write_and_score(out, nm)), flush=True)
 
 
 def main():
@@ -125,6 +134,7 @@ def main():
     ap.add_argument("cmd", choices=("ext", "dfl", "ours"))
     ap.add_argument("--tags", nargs="+", default=["c1dl", "c1dlbd", "c1chdl"])
     ap.add_argument("--alphas", nargs="+", type=float, default=[0.3, 0.4, 0.5, 0.6])
+    ap.add_argument("--betas", nargs="+", type=float, default=[0.0])
     ap.add_argument("--jobs", type=int, default=4)
     args = ap.parse_args()
     {"ext": ext_cmd, "dfl": dfl_cmd, "ours": ours_cmd}[args.cmd](args)
