@@ -81,6 +81,23 @@ def ext_cmd(args):
     show(rows, ("skillcorner", "pff"), cmb)
 
 
+def dfl_final(g, tag, alpha, beta=0.0):
+    """DFL game g: (z, change-net pr, output) for tag / alpha / beta + e3k, as dfl_cmd (held out)."""
+    import cn_dfl
+    import cn_e3k as CE
+    z = dict(np.load(os.path.join(ROOT, "data", "cache", "cn_e3k", "dfl_{}.npz".format(g))))
+    zc = dict(np.load(cn_dfl.path(g)))
+    base, blk = z["base"], [tuple(b) for b in zc["blk"]]
+    mix_sub = CE.mixed(z["cpr"].astype(np.float32), base, blk, 0.5)
+    diff = z["final"] != mix_sub
+    e = np.flatnonzero(np.diff(np.concatenate(([0], diff.astype(np.int8), [0]))))
+    sp = [(a, b, int(z["final"][a])) for a, b in zip(e[::2], e[1::2])]
+    pr = cn_dfl.heldout(tag, g)
+    if pr is None:
+        pr = cn_dfl.predict_tag(tag, zc["x"])
+    return z, pr, CE.paste(CE.mixed(pr, base, blk, alpha, beta), sp)
+
+
 def dfl_cmd(args):
     import cn_dfl
     import cn_e3k as CE

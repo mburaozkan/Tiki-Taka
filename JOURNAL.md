@@ -3707,6 +3707,28 @@ public -0.15 / -0.17).
 `cn_sweep.py ours --tags c1dl --alphas 0.52`). Next: DFL case studies of what the submission still misses,
 then features for those misses.
 
+### 2026-11-10: where the new submission misses on DFL, and the ball gaps (`tools/dfl_miss_cases.py`)
+
+`tools/dfl_loss.py --tag c1dl --alpha 0.52` (held out): 0.6372; oracles dead / live perfect +0.026,
+team perfect on live frames +0.215, both +0.290. Misses (797 of 1,990 true possessions): called D 39%,
+other team 31%, merged 16%, shifted 14%; caught 11% / 41% / 66% / 89% by length (< 2, 2-5, 5-10, >= 10 s).
+New case viewer `tools/dfl_miss_cases.py` (DFL only): per missed possession a timeline of truth, ours,
+ball, the 3 nearest players per team, net outputs and events.
+
+**Called-D misses are possessions played while the ball is unseen** (by the net's ball):
+
+| | DFL (simulated gaps) | SkillCorner (real gaps) | PFF |
+|---|---|---|---|
+| ball unseen, share of frames: caught / called-D possessions | 15% / 73% | 6% / 56% | 4% / 25% |
+| live frames called D: ball seen / unseen | 3% / 33% | 5% / 41% | 5% / 51% |
+
+In a gap every player input of the net is measured from the ball and goes blank. Tried
+(`tools/cn_motion.py`, no training yet): three ball-free channels per team (mean player speed, top-3
+speed, players over 4 m/s). On unseen frames they separate live from dead alone (AUC 0.71 / 0.72 /
+0.91 on SC / PFF / DFL) but add nothing to the dead head the net already gets (logistic, fitted on the
+other two providers: 0.855 -> 0.851, 0.915 -> 0.869, 0.953 -> 0.951). The dead head already carries
+player motion; not trained. Next: the "other team" misses (ball mostly seen).
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

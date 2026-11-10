@@ -1,6 +1,7 @@
 """Where the submission (v31_d1_c1chdlm_e3k) still loses on DFL, held out. Aggregate only.
 
     python tools/dfl_loss.py          # needs data/cache/cn_e3k/dfl_*.npz (tools/cn_e3k.py dfl)
+    python tools/dfl_loss.py --tag c1dl --alpha 0.52    # submission since 2026-11-10 (cn_sweep.dfl_final)
 
 1. Oracle gains, each alone (spellF1, mean of 7): dead / live perfect (truth D -> D, a live frame we
    call D -> our previous team); team perfect on frames we call live (truth's team where both live);
@@ -33,6 +34,11 @@ def iou(a, b, c, d):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tag")
+    ap.add_argument("--alpha", type=float, default=0.5)
+    args = ap.parse_args()
     import eval_touch_run as tr
     from pipeline import touch_net as tn
     files = sorted(glob.glob(os.path.join(ROOT, "data", "cache", "cn_e3k", "dfl_*.npz")))
@@ -42,6 +48,10 @@ def main():
         z = np.load(fp)
         lab, fin = z["lab"], z["final"]
         cpr, spr = z["cpr"].astype(np.float32), z["spr"].astype(np.float32)
+        if args.tag:
+            import cn_sweep
+            g = os.path.basename(fp)[4:-4]
+            _, cpr, fin = cn_sweep.dfl_final(g, args.tag, args.alpha)
         runs = pm.valid_runs(lab)
         filled = pm.fill_abstentions(fin, runs)
         # oracles
