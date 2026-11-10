@@ -116,7 +116,8 @@ column gives the command for the current code.
 | v31_kt | submission 2026-11-06 to 2026-11-09: v31's chain on the keeper-swap-corrected tracking (`track_fix.fix_teleports`, Gözde). Changes 27.6 s of the match; the public loss is #9–#13 only, where v31 scored on a fake H spell made by the swap | 233 | 39% | 48.0% | 0.774 / 0.926 | `$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --name v31` -> `v31_kt.csv` (byte-identical, a62eb010…) |
 | **v31_d1_kt** | **working base (since 2026-11-06): v31_kt with the dead-ball head retrained on DFL + SkillCorner + PFF (models/dead_ext_d1_s0..1.pt) in place of d1n. SkillCorner +0.007 (18/2), PFF +0.017 (62/2), DFL -0.016 (1/6)** | 225 | 39% | 48.7% | **0.800 / 0.939** | `$env:MTAH_VARIANT="_kt"; python tools/ours_chain.py --dead models/dead_ext_d1 --name v31_d1` (byte-identical, 96e5f0fb…) |
 | v31_d1_e3k_kt | submission 2026-11-09 (day): v31_d1_kt + short-net spells (ensemble e3 = s1 + s1b + s1nz, trained on SkillCorner + PFF) kept by the check k1 (gen 0.6, keep >= 0.3, edges refined, over D). SkillCorner +0.037 / PFF +0.082 nested over v31_d1 (84/0), DFL +0.011 (4/3); short possessions caught 19% -> 44% | 247 | 41% | 48.3% | 0.800 / 0.939 | `$env:MTAH_VARIANT="_kt"; python tools/short_net.py ours --ens "s1,s1b,s1nz:bz" --ens-tag e3 --check k1:0.6:0.3 --over-d --hi 0.7 --name v31_d1_e3k` (saved file af281f36…; rebuilds now differ by 1-2 frames, same score) |
-| **v31_d1_c1chdlm_e3k_kt** | **submission (since 2026-11-09, evening): v31_d1_kt, its codes mixed 50 / 50 with the change net c1chdl (chain evidence only, trained on SkillCorner + PFF + DFL) and decoded with its change heads, then e3k's spells on top. SkillCorner 0.6589, PFF 0.6594, DFL 0.6343 (held out); vs e3k +0.017 / +0.022 / +0.020 (90/1)** | 232 | 41% | 48.1% | **0.800 / 0.939** | `$env:MTAH_VARIANT="_kt"; python tools/short_net.py ours --ens "s1,s1b,s1nz:bz" --ens-tag e3 --check k1:0.6:0.3 --over-d --hi 0.7 --name v31_d1_e3k_rb`, then `python tools/cn_e3k.py ours` (needs data/cache/change_net/ours_c1chdl.npz from `change_net.py ours --tag c1chdl`) |
+| v31_d1_c1chdlm_e3k_kt | submission 2026-11-09 (evening) to 2026-11-10: v31_d1_kt, its codes mixed 50 / 50 with the change net c1chdl (chain evidence only, trained on SkillCorner + PFF + DFL) and decoded with its change heads, then e3k's spells on top. SkillCorner 0.6589, PFF 0.6594, DFL 0.6343 (held out); vs e3k +0.017 / +0.022 / +0.020 (90/1) | 232 | 41% | 48.1% | 0.800 / 0.939 | `$env:MTAH_VARIANT="_kt"; python tools/short_net.py ours --ens "s1,s1b,s1nz:bz" --ens-tag e3 --check k1:0.6:0.3 --over-d --hi 0.7 --name v31_d1_e3k_rb`, then `python tools/cn_e3k.py ours` (needs data/cache/change_net/ours_c1chdl.npz from `change_net.py ours --tag c1chdl`) |
+| **v31_d1_c1dlm052_e3k_kt** | **submission (since 2026-11-10): as v31_d1_c1chdlm_e3k_kt but with the change net c1dl (chain evidence, SkillCorner + PFF + DFL x5) at alpha 0.52. SkillCorner 0.6622 (17/3), PFF 0.6798 (64/0), DFL 0.6372 (3/4) held out; 84 / 7 vs the previous submission** | 224 | 41% | 47.5% | **0.787 / 0.937** | as above (e3k spells saved), then `python tools/cn_sweep.py ours --tags c1dl --alphas 0.52` (needs data/cache/change_net/ours_c1dl.npz) |
 
 Tried and rejected along the way:
 - symmetric touch encodings (v5);
@@ -3702,6 +3703,10 @@ gives up the external gain (below the submission on SkillCorner and DFL). Reject
 submission stays, or c1dl 0.52 (passes the adopt rule) or c1dl / c1dlbd 0.4 (up on all 91 external,
 public -0.15 / -0.17).
 
+**Decision (user, 2026-11-10): v31_d1_c1dlm052_e3k_kt is the submission** (file written by
+`cn_sweep.py ours --tags c1dl --alphas 0.52`). Next: DFL case studies of what the submission still misses,
+then features for those misses.
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is
@@ -3711,7 +3716,8 @@ only our match after our own changes to it), but both are tracked and worked fro
 |---|---|---|---|
 | public spellF1 (5 min, 17 possessions) | **v29** (v27 + second-stage network, 12.5 fps, 5 seeds) | 0.697 / 0.882 | DFL 0.571 |
 | realistic DFL (7 matches, folds won) | **v29** | 0.571 vs 0.560 (6/7, passes) | public 0.697 / 0.882 |
-| **submitted file (since 2026-11-09, evening)** | **v31_d1_c1chdlm_e3k_kt** (v31_d1 + change-net mix c1chdl + e3k short spells) | public 0.800 / 0.939 | SkillCorner 0.6589, PFF 0.6594, DFL 0.6343 (held out) |
+| **submitted file (since 2026-11-10)** | **v31_d1_c1dlm052_e3k_kt** (v31_d1 + change-net mix c1dl 0.52 + e3k short spells) | public 0.787 / 0.937 | SkillCorner 0.6622, PFF 0.6798, DFL 0.6372 (held out) |
+| previous submission (2026-11-09 evening to 2026-11-10) | v31_d1_c1chdlm_e3k_kt (change-net mix c1chdl 0.5) | public 0.800 / 0.939 | SkillCorner 0.6589, PFF 0.6594, DFL 0.6343 |
 | previous submission (2026-11-09) | v31_d1_e3k_kt (v31_kt + dead head d1 + short-net spells with the keep check) | public 0.800 / 0.939 | SkillCorner 0.6421, PFF 0.6370, DFL 0.6139 |
 | previous submission (2026-11-06 to 2026-11-09) | v31_kt (v31 on keeper-swap-corrected tracking) | public 0.774 / 0.926 | as v31 elsewhere (27.6 s differ) |
 | previous submission (2026-10-30 to 2026-11-06) | v31 (v30 + dead-ball head + remove gate with the ball-out rule) | public 0.812 / 0.917 | DFL 0.6295 (v30 0.5755) |
