@@ -14,6 +14,7 @@
 \usepackage{xcolor}
 \usepackage{caption}
 \usepackage{float}
+\usepackage[section,above]{placeins}   % a float never leaves its section or rises above its heading
 \usepackage{titlesec}
 \usepackage{fancyhdr}
 \usepackage{listings}
@@ -97,6 +98,7 @@
   {\small\color{grey} More than a Hack 2027, Phase 1 \textperiodcentered{} FC Barcelona vs Athletic Club
   \textperiodcentered{} submission \code{Tiki-Taka.csv} (\code{v31\_d1\_c1dldm05\_e3k\_kt})}
 \end{center}
+\suppressfloats[t]   % nothing floats above the title
 
 \vspace{2pt}
 \noindent\colorbox{inbox}{\parbox{\dimexpr\linewidth-2\fboxsep}{\small
@@ -141,7 +143,7 @@ feeds the same decoder, and each was validated on its own (leave-one-match-out o
 Figure~\ref{fig:pipeline} shows the chain that produces the submitted file. The ball is not seen
 on 43\% of our match's frames, which is why most stages read the players as well as the ball.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \resizebox{0.96\linewidth}{!}{%
 \begin{tikzpicture}[
