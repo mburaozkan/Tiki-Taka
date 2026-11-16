@@ -3783,6 +3783,30 @@ Level with c1dld outside at equal alpha (DFL +0.000 to +0.004, SkillCorner / PFF
 at every alpha. The net already reads "who had it last" from keep over time; the explicit memory adds
 nothing it can use. Submission unchanged. (`cn_ours_bd.py --loose` runs it on our match.)
 
+### 2026-11-16: final submission package (`Tiki-Taka.csv`, reproduction, technical document)
+
+**Final file = v31_d1_c1dldm05_e3k_kt**, unchanged since 2026-11-10 (md5 `ae577f78…`), copied to
+`Tiki-Taka.csv` (gitignored like every full-match file) and validated: 199,319 rows, 218
+possessions, public 0.787 / 0.934.
+
+- **The chain was not reproducible from the repository**: the short-net models (s1, s1b, s1nz),
+  the check (k1_e3_g0.6) and the change net c1dld were only in the gitignored `data/cache/`. They
+  are now committed in `models/short_net/` and `models/change_net/` (17 MB), and
+  `short_net.py ours` / `cn_ours_bd.py` load from there first (cache as fallback for other tags).
+- **Clean rebuild** with the cache model folders hidden and the cached outputs deleted, all four
+  steps (`ours_chain` -> `short_net ours` -> `cn_ours_bd` -> `cn_sweep`): the final file is
+  **byte-identical** (`ae577f78…`); the e3k spells file too (so the earlier "1-2 frames differ"
+  note no longer holds). Step 1 now writes X outside the halves (`v31_d1_kt.csv`, md5 `de202ba7…`),
+  same graded labels as before (public 0.800 / 0.939).
+- An earlier draft of the team's file was `v31_d1_kt` (step 1 only: no short-net spells, no change
+  net). Replaced by the final file.
+- `requirements-submission.txt`: exact versions (Python 3.12.14, torch 2.14.1+cu130, LightGBM 4.7.0,
+  XGBoost 3.0.2, ...). README opens with the reproduction commands.
+- Technical document rewritten in LaTeX (`docs/technical/Tiki-Taka.tex`): pipeline, decoder and
+  network diagrams, rules, results (public history + held-out external table), assets, limitations,
+  reproduction. Corrected on the way: SkillCorner is 20 matches (not 10); boundary timing is a
+  1.3 s IQR spread on team changes, with restarts ~0.6 s late externally (not "0.6 s IQR").
+
 ## Current situation
 
 **Best so far, on both references (2026-10-26).** The public window is the main reference (DFL is

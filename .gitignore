@@ -66,3 +66,15 @@ env/
 # -- local -------------------------------------------------------------------------------------
 # The project virtualenv.
 barcelona/
+
+# -- team Tiki-Taka ----------------------------------------------------------------------------
+# The submitted possession file holds labels for the whole match: same rule as evaluation/results.
+Tiki-Taka.csv
+# LaTeX build files of the technical document (docs/technical/).
+docs/technical/*.aux
+docs/technical/*.log
+docs/technical/*.out
+docs/technical/*.toc
+docs/technical/*.fdb_latexmk
+docs/technical/*.fls
+docs/technical/*.synctex.gz

@@ -1,5 +1,30 @@
 # More than a Hack 2027 — Phase 1: Ball Possession
 
+> ## Team Tiki-Taka: our submission
+>
+> Submitted file: `Tiki-Taka.csv` = `v31_d1_c1dldm05_e3k_kt` (md5 `ae577f788b03e0f0313f3613470c7dc3`).
+> Public window spellF1 0.787 / macroF1 0.934; held out on external data SkillCorner 0.6699,
+> PFF 0.6916, DFL 0.6438. Technical document: [`docs/technical/Tiki-Taka.tex`](docs/technical/Tiki-Taka.tex).
+> Working log: [`JOURNAL.md`](JOURNAL.md).
+>
+> **Reproduce the exact file** (Python 3.12, a CUDA GPU for steps 2-4; the data bundle unpacked
+> under `data/` as described in [DATA.md](DATA.md); every model it needs is committed in `models/`):
+>
+> ```bash
+> pip install -r requirements-submission.txt --extra-index-url https://download.pytorch.org/whl/cu130
+> export MTAH_VARIANT=_kt          # PowerShell: $env:MTAH_VARIANT="_kt"  (keeper-swap-corrected tracking)
+> python tools/ours_chain.py --dead models/dead_ext_d1 --name v31_d1                     # 1. base chain + dead-ball head
+> python tools/short_net.py ours --ens "s1,s1b,s1nz:bz" --ens-tag e3 --check k1:0.6:0.3 --over-d --hi 0.7 --name v31_d1_e3k_rb   # 2. short-possession spells
+> python tools/cn_ours_bd.py --tag c1dld --duel --nofill                                # 3. change net on our match
+> python tools/cn_sweep.py ours --tags c1dld --alphas 0.5                               # 4. 50/50 mix + spells
+> python evaluation/validate_submission.py evaluation/results/v31_d1_c1dldm05_e3k_kt.csv
+> cp evaluation/results/v31_d1_c1dldm05_e3k_kt.csv Tiki-Taka.csv
+> ```
+>
+> Rebuilt from scratch on 2026-11-16 with the training caches hidden: byte-identical
+> (`ae577f78…`). Step 1 alone writes `v31_d1_kt.csv` (public 0.800 / 0.939), an intermediate,
+> not the submission.
+
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)
 and the [Mobile World Capital Barcelona](https://www.mwcbarcelona.com)**, at the Talent Arena in Barcelona.
 

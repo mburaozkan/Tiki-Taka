@@ -1,0 +1,13 @@
+# Exact versions the submitted file (Tiki-Taka.csv = v31_d1_c1dldm05_e3k_kt) was rebuilt with.
+# Python 3.12.14. torch is the CUDA build: the short-net and change-net steps run on a CUDA GPU.
+#   pip install -r requirements-submission.txt --extra-index-url https://download.pytorch.org/whl/cu130
+numpy==2.5.4
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+torch==2.14.1+cu130
+lightgbm==4.7.0
+xgboost==3.0.2
+opencv-python==5.0.0.93
+kloppy==3.18.0
+matplotlib==3.11.2

@@ -45,6 +45,15 @@ SIGMA = 2.0
 CROP = 500                     # 20 s
 OUT = os.path.join(ROOT, "data", "cache", "short_net")
 MODELS = os.path.join(OUT, "models")
+DEPLOYED = os.path.join(ROOT, "models", "short_net")   # the submission's models, committed
+
+
+def model_file(name, cache_dir=None):
+    """A committed model in models/short_net/ if there, else the training cache."""
+    p = os.path.join(DEPLOYED, name)
+    return p if os.path.isfile(p) else os.path.join(cache_dir or MODELS, name)
+
+
 DEAD_TAG = "d1"
 DROP = [c for c in os.environ.get("SN_DROP", "").split(",") if c]   # channels zeroed (--drop)
 N_TGT = 6                      # inside H, inside A, start H, start A, end H, end A
@@ -452,7 +461,7 @@ def ours_cmd(args):
         x = np.array(xraw, copy=True)
         if drop:
             x[:, [channel_names().index(ch) for ch in drop.split("+")]] = 0
-        ck = torch.load(os.path.join(MODELS, "{}_all.pt".format(tag)), weights_only=False)
+        ck = torch.load(model_file("{}_all.pt".format(tag)), weights_only=False)
         model = make_model(ck["n_in"], ck.get("hid", 128)).cuda()
         model.load_state_dict(ck["state"])
         prs.append(predict(model, ck["mu"], ck["sd"], x))
@@ -484,8 +493,8 @@ def ours_cmd(args):
             names = names or list(xx)
             rows.append([xx[k] for k in names])
         bst = xgb.Booster()
-        bst.load_model(os.path.join(K.OUT, "models", "{}_{}_g{:g}_all.json".format(
-            ktag, args.ens_tag, gen)))
+        bst.load_model(model_file("{}_{}_g{:g}_all.json".format(ktag, args.ens_tag, gen),
+                                  os.path.join(K.OUT, "models")))
         pk = bst.predict(xgb.DMatrix(np.array(rows, np.float32))) if rows else np.zeros(0)
         new = base.copy()
         ok = (H, A, D) if args.over_d else (H, A)

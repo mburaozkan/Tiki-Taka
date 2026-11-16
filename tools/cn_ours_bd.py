@@ -87,7 +87,10 @@ def main():
             ex2.update(CL.loose_channels(ex2["h_keep"], ex2["a_keep"], starts))
         xo = np.stack([ex2[nm] if nm[:2] in ("h_", "a_") and nm in ex2 else xo[:, old.index(nm)]
                        for nm in S.channel_names()], axis=1)
-    ck = torch.load(os.path.join(C.MODELS, "{}_all.pt".format(args.tag)), weights_only=False)
+    mp = os.path.join(ROOT, "models", "change_net", "{}_all.pt".format(args.tag))   # committed (c1dld)
+    if not os.path.isfile(mp):
+        mp = os.path.join(C.MODELS, "{}_all.pt".format(args.tag))
+    ck = torch.load(mp, weights_only=False)
     model = S.make_model(ck["n_in"], ck.get("hid", 128)).cuda()
     model.load_state_dict(ck["state"])
     pr = S.predict(model, ck["mu"], ck["sd"], S.drop_channels(xo.astype(np.float32)))
