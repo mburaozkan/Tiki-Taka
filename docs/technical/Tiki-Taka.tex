@@ -130,49 +130,75 @@ on 43\% of our match's frames, which is why most stages read the players as well
 \begin{figure}[H]
 \centering
 \resizebox{\linewidth}{!}{%
-\begin{tikzpicture}[node distance=4.5mm and 5mm]
-  % inputs
-  \node[box,minimum width=30mm] (atd) {Tracking (ATD)\\ \scriptsize 25 fps, players + ball};
-  \node[box,minimum width=30mm,below=of atd] (tag) {Smart Tagging\\ \scriptsize restarts, set pieces};
-  \node[rbox,minimum width=30mm,right=8mm of atd] (kt) {\textbf{1}\; Keeper-swap fix\\ \scriptsize \code{track\_fix}, \code{\_kt}};
-  \node[box,minimum width=30mm,below=of kt] (feat) {\textbf{2}\; Features\\ \scriptsize ball state, distances, gaps};
+\begin{tikzpicture}[
+    pn/.style={text width=31mm,minimum height=11mm},
+    panel/.style={draw=gray!40,fill=gray!6,rounded corners=4pt,inner sep=2.5mm},
+    ptitle/.style={font=\small\bfseries,text=accent,above,yshift=0.5mm},
+    bus/.style={thick,color=grey}]
+  % grid: columns at x = 0 / 4.6 / 9.2 / 13.8 cm, rows at y = 0 / -1.6 / -3.2 / -4.8 cm
+  % column 1: input and cleaning
+  \node[box,pn]  (atd)  at (0,0)     {Tracking (ATD)\\ \scriptsize 25 fps, players + ball};
+  \node[rbox,pn] (kt)   at (0,-1.6)  {\textbf{1}\; Keeper-swap fix\\ \scriptsize \code{track\_fix}, variant \code{\_kt}};
+  \node[box,pn]  (feat) at (0,-3.2)  {\textbf{2}\; Features\\ \scriptsize ball state, distances, gaps};
+  \node[box,pn]  (tag)  at (0,-4.8)  {Smart Tagging\\ \scriptsize restarts, set pieces};
+  % column 2: first-stage evidence
+  \node[lbox,pn] (touch) at (4.6,0)    {\textbf{3}\; Touch network\\ \scriptsize temporal CNN, DFL};
+  \node[lbox,pn] (gbm)   at (4.6,-1.6) {\textbf{4}\; GBM + GRU\\ \scriptsize team / dead, 7 DFL matches};
+  \node[lbox,pn] (po)    at (4.6,-3.2) {\textbf{5}\; Players-only vote\\ \scriptsize LightGBM, in-domain};
+  % column 3: decoding and rules
+  \node[lbox,pn] (ref)   at (9.2,0)    {\textbf{6}\; Team refiner\\ \scriptsize BiGRU, $\pm$30 s, 5 seeds};
+  \node[dbox,pn] (vit)   at (9.2,-1.6) {\textbf{7}\; Viterbi H / A / D\\ \scriptsize hybrid decoder};
+  \node[rbox,pn] (rules) at (9.2,-3.2) {\textbf{8}\; Touch-run vote\\ \scriptsize + backdating};
+  \node[lbox,pn] (dead)  at (9.2,-4.8) {\textbf{9}\; Dead-ball head\\ \scriptsize add-only + remove gate};
+  % column 4: final networks
+  \node[lbox,pn] (cn)  at (13.8,0)    {\textbf{10}\; Change net c1dld\\ \scriptsize mixed 50 / 50 with \code{v31\_d1}};
+  \node[lbox,pn] (sn)  at (13.8,-1.6) {\textbf{11}\; Short-net spells\\ \scriptsize 3 nets + XGBoost check};
+  \node[box,pn,draw=accent,very thick,fill=white] (out) at (13.8,-3.2) {\textbf{Tiki-Taka.csv}\\ \scriptsize 218 possessions};
+
+  % panels (all the same height: they span to the bottom row)
+  \coordinate (b1) at (0,-4.8);  \coordinate (b2) at (4.6,-4.8);
+  \coordinate (b3) at (9.2,-4.8); \coordinate (b4) at (13.8,-4.8);
+  \begin{scope}[on background layer]
+    \node[panel,fit=(atd)(tag)]       (P1) {}; \node[ptitle] at (P1.north) {Input \& cleaning};
+    \node[panel,fit=(touch)(po)(b2)]  (P2) {}; \node[ptitle] at (P2.north) {First-stage evidence};
+    \node[panel,fit=(ref)(dead)]      (P3) {}; \node[ptitle] at (P3.north) {Decoding \& rules};
+    \node[panel,fit=(cn)(out)(b4)]    (P4) {}; \node[ptitle] at (P4.north) {Final networks};
+  \end{scope}
+
+  % column 1, top to bottom; tagging feeds the features from below
   \draw[arr] (atd) -- (kt);
   \draw[arr] (kt) -- (feat);
   \draw[arr] (tag) -- (feat);
-
-  % first stage
-  \node[lbox,minimum width=34mm,right=8mm of kt] (touch) {\textbf{3}\; Touch network\\ \scriptsize TCN, DFL};
-  \node[lbox,minimum width=34mm,below=of touch] (gbm) {\textbf{4}\; GBM + GRU team / dead\\ \scriptsize DFL, 7 matches};
-  \node[lbox,minimum width=34mm,below=of gbm] (po) {\textbf{5}\; Players-only team vote\\ \scriptsize LightGBM, in-domain};
-  \draw[arr] (feat.east) -- ++(3mm,0) |- (touch.west);
-  \draw[arr] (feat.east) -- ++(3mm,0) |- (gbm.west);
-  \draw[arr] (feat.east) -- ++(3mm,0) |- (po.west);
-
-  % second stage
-  \node[lbox,minimum width=34mm,right=8mm of gbm] (ref) {\textbf{6}\; Team refiner\\ \scriptsize BiGRU, $\pm$30 s, 5 seeds};
-  \node[dbox,minimum width=34mm,below=of ref] (vit) {\textbf{7}\; Viterbi H/A/D\\ \scriptsize hybrid decoder};
-  \draw[arr] (touch.east) -- ++(3mm,0) |- (ref.west);
-  \draw[arr] (gbm) -- (ref);
-  \draw[arr] (po.east) -- ++(3mm,0) |- (ref.west);
+  % features -> every first-stage model (bus at x = 2.3)
+  \draw[bus] (feat.east) -- (2.3,-3.2);
+  \draw[bus] (2.3,-3.2) -- (2.3,0);
+  \draw[arr] (2.3,0) -- (touch.west);
+  \draw[arr] (2.3,-1.6) -- (gbm.west);
+  \draw[arr] (2.3,-3.2) -- (po.west);
+  \fill[grey] (2.3,-1.6) circle (1.1pt);
+  % every first-stage model -> refiner (bus at x = 6.9)
+  \draw[bus] (touch.east) -- (6.9,0);
+  \draw[bus] (gbm.east) -- (6.9,-1.6);
+  \draw[bus] (po.east) -- (6.9,-3.2) -- (6.9,0);
+  \fill[grey] (6.9,-1.6) circle (1.1pt);
+  \draw[arr] (6.9,0) -- (ref.west);
+  % column 3, top to bottom
   \draw[arr] (ref) -- (vit);
-
-  % rules row
-  \node[rbox,minimum width=34mm,below=9mm of vit] (rules) {\textbf{8}\; Touch-run vote\\ + backdating};
-  \node[lbox,minimum width=34mm,left=8mm of rules] (dead) {\textbf{9}\; Dead-ball head\\ \scriptsize add-only + remove gate};
-  \node[lbox,minimum width=30mm,left=8mm of dead] (cn) {\textbf{10}\; Change net c1dld\\ \scriptsize mixed $\alpha=0.5$};
   \draw[arr] (vit) -- (rules);
   \draw[arr] (rules) -- (dead);
-  \draw[arr] (dead) -- node[note,above]{\code{v31\_d1}} (cn);
-
-  \node[lbox,minimum width=30mm,below=of cn] (sn) {\textbf{11}\; Short-net spells e3k\\ \scriptsize 3 nets + XGBoost check};
-  \node[box,minimum width=34mm,draw=accent,very thick,fill=white,right=8mm of sn] (out) {\textbf{Tiki-Taka.csv}\\ \scriptsize 218 possessions};
+  % column 3 -> column 4 (bus at x = 11.5)
+  \draw[bus] (dead.east) -- (11.5,-4.8) -- (11.5,0);
+  \draw[arr] (11.5,0) -- (cn.west);
+  \node[note,rotate=90,fill=white,inner sep=1pt] at (11.5,-2.4) {\code{v31\_d1} codes};
+  % column 4, top to bottom
   \draw[arr] (cn) -- (sn);
   \draw[arr] (sn) -- (out);
 
-  % legend
-  \node[rbox,minimum height=5mm,minimum width=12mm,font=\scriptsize,left=12mm of cn] (l1) {rule};
-  \node[lbox,minimum height=5mm,minimum width=12mm,font=\scriptsize,below=1.5mm of l1] (l2) {learned};
-  \node[dbox,minimum height=5mm,minimum width=12mm,font=\scriptsize,below=1.5mm of l2] (l3) {decoder};
+  % legend, centred under the panels
+  \node[rbox,minimum height=5mm,minimum width=14mm,font=\scriptsize] (l1) at (5.6,-6.25) {rule};
+  \node[lbox,minimum height=5mm,minimum width=14mm,font=\scriptsize,right=3mm of l1] (l2) {learned};
+  \node[dbox,minimum height=5mm,minimum width=14mm,font=\scriptsize,right=3mm of l2] (l3) {decoder};
+  \node[box,minimum height=5mm,minimum width=14mm,font=\scriptsize,right=3mm of l3] (l4) {data / features};
 \end{tikzpicture}}
 \caption{The chain behind the submitted file. Orange blocks are learned (trained on external
 data, except the in-domain vote in 5), green blocks are rules, purple is the decoder. Steps 1--9 are
