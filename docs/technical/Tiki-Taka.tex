@@ -39,11 +39,25 @@
 
 \titleformat{\section}{\large\bfseries\color{accent}}{\thesection}{0.6em}{}
 \titleformat{\subsection}{\normalsize\bfseries\color{accent}}{\thesubsection}{0.6em}{}
-\titlespacing*{\section}{0pt}{1.3em}{0.5em}
-\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+\titlespacing*{\section}{0pt}{1.0em}{0.4em}
+\titlespacing*{\subsection}{0pt}{0.7em}{0.25em}
+
+% floats: let figures sit with the text and share pages instead of leaving half-empty pages
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.07}
+\renewcommand{\floatpagefraction}{0.85}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{5}
+\setlength{\textfloatsep}{10pt plus 2pt minus 3pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{0pt}
 \setlist{itemsep=2pt,topsep=3pt,leftmargin=1.3em}
 \captionsetup{font=small,labelfont={bf,color=accent},width=0.95\linewidth}
-\setlength{\parskip}{0.35em}
+\setlength{\parskip}{0.25em}
 \setlength{\parindent}{0pt}
 
 \pagestyle{fancy}
@@ -127,9 +141,9 @@ feeds the same decoder, and each was validated on its own (leave-one-match-out o
 Figure~\ref{fig:pipeline} shows the chain that produces the submitted file. The ball is not seen
 on 43\% of our match's frames, which is why most stages read the players as well as the ball.
 
-\begin{figure}[H]
+\begin{figure}[t]
 \centering
-\resizebox{\linewidth}{!}{%
+\resizebox{0.96\linewidth}{!}{%
 \begin{tikzpicture}[
     pn/.style={text width=31mm,minimum height=11mm},
     panel/.style={draw=gray!40,fill=gray!6,rounded corners=4pt,inner sep=2.5mm},
@@ -261,12 +275,13 @@ $i\to j$ at frame $t$ scores $\log P(\text{change } i\to j \text{ at } t) + b$, 
 $(1-\alpha)\,P_{\text{net}} + \alpha\,(0.9\,\mathbb{1}_{\text{base}} + 0.1/3)$, so the base keeps
 half the vote on what each frame is while the network decides where the changes are.
 
-\begin{figure}[H]
+\begin{figure}[!htbp]
 \centering
-\begin{tikzpicture}[state/.style={circle,draw=decline,fill=dec,very thick,minimum size=12mm,font=\bfseries}]
+\begin{tikzpicture}[scale=0.85,transform shape,
+                    state/.style={circle,draw=decline,fill=dec,very thick,minimum size=11mm,font=\bfseries}]
   \node[state,draw=barca] (H) at (0,0) {H};
   \node[state,draw=athletic] (A) at (5,0) {A};
-  \node[state] (D) at (2.5,-2.6) {D};
+  \node[state] (D) at (2.5,-2.4) {D};
   \draw[arr,bend left=15] (H) to node[note,above]{turnover} (A);
   \draw[arr,bend left=15] (A) to node[note,below]{turnover} (H);
   \draw[arr,bend left=12] (H) to node[note,above,sloped]{stoppage} (D);
@@ -276,7 +291,7 @@ half the vote on what each frame is while the network decides where the changes 
   \draw[arr] (H) edge[loop left] node[note,left]{free} (H);
   \draw[arr] (A) edge[loop right] node[note,right]{free} (A);
   \draw[arr] (D) edge[loop below] node[note,below]{free} (D);
-  \node[note,align=left,anchor=west] at (7.4,-1.0) {per frame: evidence score of each state\\
+  \node[note,align=left,anchor=west] at (7.2,-1.0) {per frame: evidence score of each state\\
      per change: penalty (hand path) or\\ \quad $\log P(\text{change}) + b$ (change net)\\
      decoded per half, best path by Viterbi};
 \end{tikzpicture}
@@ -299,9 +314,9 @@ augmentation, on the 84 external matches (SkillCorner 20 + PFF 64, plus DFL weig
 c1dld), in four fixed folds plus one model on all matches; the deployed model is the
 all-matches one.
 
-\begin{figure}[H]
+\begin{figure}[!htbp]
 \centering
-\resizebox{\linewidth}{!}{%
+\resizebox{0.92\linewidth}{!}{%
 \begin{tikzpicture}[node distance=3mm]
   \node[box,minimum width=26mm,minimum height=6.5mm,font=\scriptsize] (x) {inputs $x_t$\\ 47 / 51 channels};
   \node[layer,right=6mm of x] (lin) {Linear $\to$ 128\\ GELU};
@@ -386,8 +401,7 @@ team: the keeper's track vanishes, reappears seconds later tens of metres away i
 while the real keeper of that goal freezes. \code{pipeline/track\_fix.fix\_teleports} finds this from
 physics rather than position:
 
-\begin{figure}[H]
-\centering
+\begin{center}
 \begin{tikzpicture}[node distance=4mm and 5mm]
   \node[rbox,minimum width=32mm] (a) {slot reappears\\ $\geq$20 m away, $>$12 m/s};
   \node[rbox,minimum width=36mm,right=of a] (b) {stays $\leq$30 m from the other goal\\ $\geq$2 s, deepest on $\geq$50\%};
@@ -395,9 +409,9 @@ physics rather than position:
   \node[rbox,minimum width=32mm,right=of c] (d) {frozen keeper removed;\\ both tracks bridged};
   \draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr] (c) -- (d);
 \end{tikzpicture}
-\caption{The teleport rule (variant \code{\_kt}). Over the full match: 16 teleports, 2 real keeper swaps,
-244\,s reassigned.}
-\end{figure}
+\captionof{figure}{The teleport rule (variant \code{\_kt}). Over the full match: 16 teleports, 2 real
+keeper swaps, 244\,s reassigned.}
+\end{center}
 
 It changes 27.6\,s of labels in total. On the public window it costs 0.038 \sF: before the fix,
 the swapped tracking happened to create a short possession that matches a true one. We adopted it
@@ -406,11 +420,13 @@ anyway because it is correct tracking, and it is the base of every later version
 % ----------------------------------------------------------------
 \section{Results}
 
-\begin{figure}[H]
+\begin{figure}[!htbp]
+\centering
+\begin{minipage}[b]{0.6\linewidth}
 \centering
 \begin{tikzpicture}
 \begin{axis}[
-  width=\linewidth, height=5.6cm,
+  width=\linewidth, height=5.2cm,
   symbolic x coords={v5,v6,v8,v12,v19,v20,v21,v29,v29tr,v30,v31,v31kt,v31d1,e3k,c1chdl,c1dl,final},
   xtick=data, x tick label style={rotate=45,anchor=east,font=\scriptsize},
   ymin=0.45, ymax=1.0, ytick={0.5,0.6,0.7,0.8,0.9,1.0},
@@ -430,13 +446,35 @@ anyway because it is correct tracking, and it is the base of every later version
 \addlegendentry{public \mF}
 \end{axis}
 \end{tikzpicture}
-\caption{Public five-minute window over the version history. These 17 possessions are a correctness
-check, not the selection criterion: from \code{v31\_d1} on, versions were chosen on held-out external
-data, where they improve steadily even when the public score is flat or drops.}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.38\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  ybar, bar width=4.5pt, width=\linewidth, height=5.2cm,
+  symbolic x coords={SkillCorner,PFF,DFL}, xtick=data, enlarge x limits=0.25,
+  ymin=0.60, ymax=0.70, ytick={0.60,0.62,0.64,0.66,0.68,0.70},
+  yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=2},
+  ylabel={held-out \sF}, ylabel style={font=\small},
+  tick label style={font=\scriptsize}, grid=major, grid style={draw=gray!20},
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=2,font=\scriptsize,draw=none}]
+\addplot[fill=gray!40,draw=gray] coordinates {(SkillCorner,0.6421) (PFF,0.6370) (DFL,0.6139)};
+\addplot[fill=accent!35,draw=accent] coordinates {(SkillCorner,0.6589) (PFF,0.6594) (DFL,0.6343)};
+\addplot[fill=accent!65,draw=accent] coordinates {(SkillCorner,0.6622) (PFF,0.6798) (DFL,0.6372)};
+\addplot[fill=learnline,draw=learnline] coordinates {(SkillCorner,0.6699) (PFF,0.6916) (DFL,0.6438)};
+\legend{e3k, c1chdl, c1dl 0.52, final}
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\caption{\textbf{Left:} the public five-minute window over the version history. These 17 possessions
+are a correctness check, not the selection criterion. \textbf{Right:} held-out \sF{} on the external
+sets for the last four submissions (Table~\ref{tab:external}). From \code{v31\_d1} on, versions were
+chosen on held-out data, where every step improves all three sets even when the public score is flat
+or drops.}
 \label{fig:history}
 \end{figure}
 
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering\small
 \begin{tabular}{@{}lcccc@{}}
 \toprule
@@ -453,25 +491,6 @@ the last four submissions. The final version wins 82 matches and loses 7 against
 \label{tab:external}
 \end{table}
 
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-  ybar, bar width=7pt, width=0.8\linewidth, height=4.6cm,
-  symbolic x coords={SkillCorner,PFF,DFL}, xtick=data, enlarge x limits=0.25,
-  ymin=0.60, ymax=0.70, ylabel={held-out \sF}, ylabel style={font=\small},
-  tick label style={font=\scriptsize}, grid=major, grid style={draw=gray!20},
-  legend style={at={(0.5,1.03)},anchor=south,legend columns=4,font=\scriptsize,draw=none}]
-\addplot[fill=gray!40,draw=gray] coordinates {(SkillCorner,0.6421) (PFF,0.6370) (DFL,0.6139)};
-\addplot[fill=accent!35,draw=accent] coordinates {(SkillCorner,0.6589) (PFF,0.6594) (DFL,0.6343)};
-\addplot[fill=accent!65,draw=accent] coordinates {(SkillCorner,0.6622) (PFF,0.6798) (DFL,0.6372)};
-\addplot[fill=learnline,draw=learnline] coordinates {(SkillCorner,0.6699) (PFF,0.6916) (DFL,0.6438)};
-\legend{e3k, c1chdl, c1dl 0.52, final}
-\end{axis}
-\end{tikzpicture}
-\caption{The same numbers: every step of the change-network line improves all three external sets.}
-\end{figure}
-
 \textbf{Full match (aggregate):} 218 possessions of mean 15.3\,s, 39\% of team changes direct
 (team to team, no stoppage between), 47.3\% D within the halves. The file has no \code{X}: frames
 outside the halves, which are never graded, carry \code{D}.
@@ -479,7 +498,7 @@ outside the halves, which are never graded, carry \code{D}.
 % ----------------------------------------------------------------
 \section{Assets: used and dropped}
 
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering\small
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{3.6cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{4.2cm}@{}}
 \toprule
